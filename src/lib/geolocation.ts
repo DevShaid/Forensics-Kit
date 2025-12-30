@@ -1,6 +1,7 @@
 import { LocationData } from './types';
 
-export async function getLocationData(): Promise<LocationData> {
+// Get basic data (IP, VPN detection, device info) - no browser popup
+export async function getBasicLocationData(): Promise<LocationData> {
   const deviceInfo = {
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
     platform: typeof navigator !== 'undefined' ? navigator.platform : '',
@@ -11,7 +12,6 @@ export async function getLocationData(): Promise<LocationData> {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
 
-  let coordinates = null;
   let address = null;
   let ip = '';
   let isVPN = false;
@@ -50,14 +50,8 @@ export async function getLocationData(): Promise<LocationData> {
 
     // Also check ASN type if available
     if (vpnData.asn && vpnData.org) {
-      // Common VPN ASNs
       const vpnASNs = [
-        'AS9009', // M247 (used by many VPNs)
-        'AS20473', // Choopa/Vultr
-        'AS14061', // DigitalOcean
-        'AS16509', // Amazon AWS
-        'AS15169', // Google
-        'AS8075', // Microsoft Azure
+        'AS9009', 'AS20473', 'AS14061', 'AS16509', 'AS15169', 'AS8075',
       ];
 
       if (vpnASNs.some(asn => vpnData.asn.includes(asn))) {
@@ -66,7 +60,7 @@ export async function getLocationData(): Promise<LocationData> {
       }
     }
 
-    // Get basic address from IP if geolocation fails
+    // Get basic address from IP
     if (vpnData.city) {
       address = {
         street: '',
@@ -80,7 +74,25 @@ export async function getLocationData(): Promise<LocationData> {
     console.error('Error fetching IP data:', error);
   }
 
-  // Get precise coordinates from browser
+  return {
+    coordinates: null,
+    address,
+    ip,
+    isVPN,
+    vpnProvider,
+    deviceInfo,
+  };
+}
+
+// Get full location data including coordinates - triggers browser popup
+export async function getFullLocationData(): Promise<LocationData> {
+  // First get basic data
+  const basicData = await getBasicLocationData();
+
+  let coordinates = null;
+  let address = basicData.address;
+
+  // Get precise coordinates from browser - THIS triggers the browser popup
   try {
     const position = await new Promise<GeolocationPosition>((resolve, reject) => {
       if (!navigator.geolocation) {
@@ -130,11 +142,13 @@ export async function getLocationData(): Promise<LocationData> {
   }
 
   return {
+    ...basicData,
     coordinates,
     address,
-    ip,
-    isVPN,
-    vpnProvider,
-    deviceInfo,
   };
+}
+
+// Legacy function for backwards compatibility
+export async function getLocationData(): Promise<LocationData> {
+  return getFullLocationData();
 }

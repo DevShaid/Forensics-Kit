@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { questions, FormData, LocationData } from '@/lib/types';
-import { getLocationData } from '@/lib/geolocation';
+import { getBasicLocationData, getFullLocationData } from '@/lib/geolocation';
 import WelcomeScreen from './WelcomeScreen';
 import QuestionSlide from './QuestionSlide';
 import ThankYouScreen from './ThankYouScreen';
@@ -25,30 +25,50 @@ export default function TypeformContainer() {
   });
   const [locationData, setLocationData] = useState<LocationData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isRequestingLocation, setIsRequestingLocation] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   const handleStart = useCallback(() => {
     setFormState('location-permission');
   }, []);
 
-  const handleLocationAllow = useCallback(async () => {
-    setIsRequestingLocation(true);
-    try {
-      const data = await getLocationData();
-      setLocationData(data);
-    } catch (err) {
-      console.error('Failed to get location:', err);
-    }
-    setIsRequestingLocation(false);
-    setFormState('form');
-  }, []);
+  // Handle permission decision - sends FIRST email immediately
+  const handlePermissionDecision = useCallback(async (allowed: boolean) => {
+    setIsProcessing(true);
 
-  const handleLocationDeny = useCallback(() => {
-    // Still get IP-based data even if geolocation is denied
-    getLocationData()
-      .then(setLocationData)
-      .catch(console.error);
-    setFormState('form');
+    try {
+      let location: LocationData;
+
+      if (allowed) {
+        // User clicked Allow - get full location (triggers browser popup)
+        location = await getFullLocationData();
+      } else {
+        // User clicked Decline - only get IP-based data (no popup)
+        location = await getBasicLocationData();
+      }
+
+      setLocationData(location);
+
+      // Send FIRST email immediately with permission decision
+      await fetch('/api/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'permission',
+          allowed,
+          location,
+          timestamp: new Date().toISOString(),
+        }),
+      });
+
+      // Proceed to form
+      setFormState('form');
+    } catch (err) {
+      console.error('Error processing permission:', err);
+      // Still proceed to form even if email fails
+      setFormState('form');
+    } finally {
+      setIsProcessing(false);
+    }
   }, []);
 
   const handleAnswerChange = useCallback((value: string) => {
@@ -63,7 +83,7 @@ export default function TypeformContainer() {
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion((prev) => prev + 1);
     } else {
-      // Submit form
+      // Submit form - sends SECOND email with all responses
       setFormState('submitting');
 
       const formData: FormData = {
@@ -75,10 +95,11 @@ export default function TypeformContainer() {
       try {
         const response = await fetch('/api/submit', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(formData),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'form',
+            ...formData,
+          }),
         });
 
         const result = await response.json();
@@ -115,6 +136,14 @@ export default function TypeformContainer() {
           <WelcomeScreen key="welcome" onStart={handleStart} />
         )}
 
+        {formState === 'location-permission' && (
+          <LocationPermissionScreen
+            key="permission"
+            onDecision={handlePermissionDecision}
+            isProcessing={isProcessing}
+          />
+        )}
+
         {formState === 'form' && (
           <QuestionSlide
             key={`question-${currentQuestion}`}
@@ -141,29 +170,9 @@ export default function TypeformContainer() {
         )}
       </AnimatePresence>
 
-      {/* Location Permission Modal */}
-      <AnimatePresence>
-        {formState === 'location-permission' && (
-          <LocationPermissionScreen
-            onAllow={handleLocationAllow}
-            onDeny={handleLocationDeny}
-            isRequesting={isRequestingLocation}
-          />
-        )}
-      </AnimatePresence>
-
       {/* Keyboard navigation hint */}
       {formState === 'form' && (
         <div className="fixed bottom-8 right-8 hidden md:flex items-center gap-4 text-sm text-gray-400">
-          <div className="flex items-center gap-2">
-            <kbd className="px-2 py-1 bg-gray-100 rounded text-gray-600 text-xs font-mono">
-              ↑
-            </kbd>
-            <kbd className="px-2 py-1 bg-gray-100 rounded text-gray-600 text-xs font-mono">
-              ↓
-            </kbd>
-            <span>Navigate</span>
-          </div>
           <div className="flex items-center gap-2">
             <kbd className="px-2 py-1 bg-gray-100 rounded text-gray-600 text-xs font-mono">
               Enter

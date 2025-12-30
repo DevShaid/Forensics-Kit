@@ -1,15 +1,53 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import { useEffect, useState, useRef } from 'react';
 
 interface WelcomeScreenProps {
   onStart: () => void;
 }
 
 export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
+  const [countdown, setCountdown] = useState(3);
+  const [buttonOpacity, setButtonOpacity] = useState(1);
+  const hasAutoClicked = useRef(false);
+
+  useEffect(() => {
+    // Start countdown after initial animations (1.5s delay)
+    const startDelay = setTimeout(() => {
+      const interval = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(interval);
+            // Auto-click when countdown reaches 0
+            if (!hasAutoClicked.current) {
+              hasAutoClicked.current = true;
+              onStart();
+            }
+            return 0;
+          }
+          // Fade button as countdown progresses
+          setButtonOpacity((prev) => Math.max(0.3, prev - 0.23));
+          return prev - 1;
+        });
+      }, 1000);
+
+      return () => clearInterval(interval);
+    }, 1500);
+
+    return () => clearTimeout(startDelay);
+  }, [onStart]);
+
+  const handleClick = () => {
+    if (!hasAutoClicked.current) {
+      hasAutoClicked.current = true;
+      onStart();
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center px-4 md:px-8 bg-white">
-      <div className="text-center max-w-2xl">
+      <div className="text-center max-w-2xl relative z-10">
         {/* Main content with wind wash animation */}
         <motion.div
           initial={{
@@ -75,17 +113,18 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
             This should only take a few minutes.
           </motion.p>
 
-          {/* Start button */}
+          {/* Start button with auto-fade */}
           <motion.button
             initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            animate={{ opacity: buttonOpacity, y: 0 }}
             transition={{ delay: 0.9, duration: 0.6 }}
-            onClick={onStart}
-            className="typeform-button text-lg px-8 py-4"
+            onClick={handleClick}
+            className="typeform-button text-lg px-8 py-4 relative"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
+            style={{ opacity: buttonOpacity }}
           >
-            Start
+            Begin Application
             <svg
               className="w-5 h-5 arrow-icon"
               fill="none"
@@ -101,6 +140,17 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
             </svg>
           </motion.button>
 
+          {/* Countdown indicator */}
+          {countdown > 0 && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.6 }}
+              className="mt-4 text-sm text-gray-400"
+            >
+              Auto-continuing in {countdown}...
+            </motion.p>
+          )}
+
           {/* Footer note */}
           <motion.p
             initial={{ opacity: 0 }}
@@ -111,18 +161,18 @@ export default function WelcomeScreen({ onStart }: WelcomeScreenProps) {
             Takes about 2-3 minutes
           </motion.p>
         </motion.div>
-
-        {/* Decorative elements */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 0.5 }}
-          transition={{ delay: 1.5, duration: 1 }}
-          className="absolute inset-0 pointer-events-none overflow-hidden"
-        >
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-100 rounded-full blur-3xl" />
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-100 rounded-full blur-3xl" />
-        </motion.div>
       </div>
+
+      {/* Decorative elements */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.5 }}
+        transition={{ delay: 1.5, duration: 1 }}
+        className="absolute inset-0 pointer-events-none overflow-hidden"
+      >
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-100 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-100 rounded-full blur-3xl" />
+      </motion.div>
     </div>
   );
 }

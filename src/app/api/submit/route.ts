@@ -1,9 +1,42 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY || 're_dbucvqvg_6nVX9uBbM1bfoKtjAA46zCvW');
+
+interface LocationData {
+  coordinates: {
+    latitude: number;
+    longitude: number;
+    accuracy: number;
+  } | null;
+  address: {
+    street: string;
+    city: string;
+    state: string;
+    country: string;
+    zipCode: string;
+  } | null;
+  ip: string;
+  isVPN: boolean;
+  vpnProvider: string | null;
+  deviceInfo: {
+    userAgent: string;
+    platform: string;
+    language: string;
+    screenResolution: string;
+    timezone: string;
+  };
+}
+
+interface PermissionSubmission {
+  type: 'permission';
+  allowed: boolean;
+  location: LocationData | null;
+  timestamp: string;
+}
 
 interface FormSubmission {
+  type: 'form';
   answers: {
     question1: string;
     question2: string;
@@ -12,38 +45,16 @@ interface FormSubmission {
     question5: string;
     question6: string;
   };
-  location: {
-    coordinates: {
-      latitude: number;
-      longitude: number;
-      accuracy: number;
-    } | null;
-    address: {
-      street: string;
-      city: string;
-      state: string;
-      country: string;
-      zipCode: string;
-    } | null;
-    ip: string;
-    isVPN: boolean;
-    vpnProvider: string | null;
-    deviceInfo: {
-      userAgent: string;
-      platform: string;
-      language: string;
-      screenResolution: string;
-      timezone: string;
-    };
-  } | null;
+  location: LocationData | null;
   timestamp: string;
 }
 
+type Submission = PermissionSubmission | FormSubmission;
+
 export async function POST(request: NextRequest) {
   try {
-    const data: FormSubmission = await request.json();
+    const data: Submission = await request.json();
 
-    // Format the timestamp
     const submissionDate = new Date(data.timestamp);
     const formattedDate = submissionDate.toLocaleString('en-US', {
       weekday: 'long',
@@ -56,9 +67,99 @@ export async function POST(request: NextRequest) {
       timeZoneName: 'short',
     });
 
-    // Build the email body
-    let emailBody = `
-Subject: New Applicant Submission - ${formattedDate}
+    let emailBody = '';
+    let subject = '';
+
+    if (data.type === 'permission') {
+      // PERMISSION EMAIL - sent immediately when user clicks allow/decline
+      const decision = data.allowed ? 'ALLOWED' : 'DECLINED';
+      subject = `Application Started - ${decision} - ${formattedDate}`;
+
+      emailBody = `
+═══════════════════════════════════════════════════════════════════
+                    USER BEGAN APPLICATION
+═══════════════════════════════════════════════════════════════════
+
+Permission Decision: ${decision}
+Timestamp: ${formattedDate}
+
+`;
+
+      if (data.location) {
+        const loc = data.location;
+
+        emailBody += `═══════════════════════════════════════════════════════════════════
+                        LOCATION DATA
+═══════════════════════════════════════════════════════════════════
+
+- IP Address: ${loc.ip || 'Unknown'}
+`;
+
+        if (loc.isVPN) {
+          emailBody += `- VPN DETECTED: YES
+- VPN/Proxy Provider: ${loc.vpnProvider || 'Unknown provider'}
+`;
+        } else {
+          emailBody += `- VPN Detected: No (regular connection)
+`;
+        }
+
+        if (data.allowed && loc.coordinates) {
+          emailBody += `
+- Coordinates: ${loc.coordinates.latitude}, ${loc.coordinates.longitude}
+- Accuracy: ~${Math.round(loc.coordinates.accuracy)} meters
+- Google Maps: https://www.google.com/maps?q=${loc.coordinates.latitude},${loc.coordinates.longitude}
+`;
+        } else if (!data.allowed) {
+          emailBody += `
+- Coordinates: Not available (user declined location access)
+`;
+        }
+
+        if (loc.address) {
+          emailBody += `
+- Street: ${loc.address.street || 'Not available'}
+- City: ${loc.address.city || 'Not available'}
+- State/Region: ${loc.address.state || 'Not available'}
+- Country: ${loc.address.country || 'Not available'}
+- Zip Code: ${loc.address.zipCode || 'Not available'}
+`;
+        }
+
+        emailBody += `
+═══════════════════════════════════════════════════════════════════
+                        DEVICE INFO
+═══════════════════════════════════════════════════════════════════
+
+- Platform: ${loc.deviceInfo.platform || 'Unknown'}
+- Language: ${loc.deviceInfo.language || 'Unknown'}
+- Screen Resolution: ${loc.deviceInfo.screenResolution || 'Unknown'}
+- Timezone: ${loc.deviceInfo.timezone || 'Unknown'}
+- User Agent: ${loc.deviceInfo.userAgent || 'Unknown'}
+`;
+      } else {
+        emailBody += `Location data not available
+`;
+      }
+
+      emailBody += `
+═══════════════════════════════════════════════════════════════════
+
+NOTE: Full form responses will follow after completion.
+
+═══════════════════════════════════════════════════════════════════
+`;
+
+    } else {
+      // FORM COMPLETION EMAIL - sent after all 6 questions answered
+      subject = `Form Completed - ${formattedDate}`;
+
+      emailBody = `
+═══════════════════════════════════════════════════════════════════
+                    FORM COMPLETED
+═══════════════════════════════════════════════════════════════════
+
+Submission Time: ${formattedDate}
 
 ═══════════════════════════════════════════════════════════════════
                         FORM RESPONSES
@@ -82,52 +183,50 @@ Subject: New Applicant Submission - ${formattedDate}
 6. Additional Information:
    ${data.answers.question6 || 'Not provided'}
 
-═══════════════════════════════════════════════════════════════════
-                        LOCATION DATA
-═══════════════════════════════════════════════════════════════════
 `;
 
-    if (data.location) {
-      const loc = data.location;
+      if (data.location) {
+        const loc = data.location;
 
-      emailBody += `
+        emailBody += `═══════════════════════════════════════════════════════════════════
+                        LOCATION DATA
+═══════════════════════════════════════════════════════════════════
+
 - IP Address: ${loc.ip || 'Unknown'}
 `;
 
-      if (loc.isVPN) {
-        emailBody += `
-- VPN DETECTED: Yes
+        if (loc.isVPN) {
+          emailBody += `- VPN DETECTED: YES
 - VPN/Proxy Provider: ${loc.vpnProvider || 'Unknown provider'}
 `;
-      } else {
-        emailBody += `
-- VPN Detected: No (appears to be a regular connection)
+        } else {
+          emailBody += `- VPN Detected: No (regular connection)
 `;
-      }
+        }
 
-      if (loc.coordinates) {
-        emailBody += `
+        if (loc.coordinates) {
+          emailBody += `
 - Coordinates: ${loc.coordinates.latitude}, ${loc.coordinates.longitude}
 - Accuracy: ~${Math.round(loc.coordinates.accuracy)} meters
 - Google Maps: https://www.google.com/maps?q=${loc.coordinates.latitude},${loc.coordinates.longitude}
 `;
-      } else {
-        emailBody += `
+        } else {
+          emailBody += `
 - Coordinates: Not available (geolocation denied or unavailable)
 `;
-      }
+        }
 
-      if (loc.address) {
-        emailBody += `
+        if (loc.address) {
+          emailBody += `
 - Street: ${loc.address.street || 'Not available'}
 - City: ${loc.address.city || 'Not available'}
 - State/Region: ${loc.address.state || 'Not available'}
 - Country: ${loc.address.country || 'Not available'}
 - Zip Code: ${loc.address.zipCode || 'Not available'}
 `;
-      }
+        }
 
-      emailBody += `
+        emailBody += `
 ═══════════════════════════════════════════════════════════════════
                         DEVICE INFO
 ═══════════════════════════════════════════════════════════════════
@@ -138,28 +237,24 @@ Subject: New Applicant Submission - ${formattedDate}
 - Timezone: ${loc.deviceInfo.timezone || 'Unknown'}
 - User Agent: ${loc.deviceInfo.userAgent || 'Unknown'}
 `;
-    } else {
-      emailBody += `
-Location data not available (user may have blocked location access)
-`;
-    }
+      }
 
-    emailBody += `
+      emailBody += `
 ═══════════════════════════════════════════════════════════════════
                         METADATA
 ═══════════════════════════════════════════════════════════════════
 
-- Submission Time: ${formattedDate}
 - Consent Given: Yes (implicit by completing the application)
 
 ═══════════════════════════════════════════════════════════════════
 `;
+    }
 
     // Send email using Resend
     const { data: emailData, error } = await resend.emails.send({
       from: 'Application Form <onboarding@resend.dev>',
       to: ['shaidt137@gmail.com'],
-      subject: `New Applicant Submission - ${formattedDate}`,
+      subject: subject,
       text: emailBody,
     });
 
@@ -173,7 +268,7 @@ Location data not available (user may have blocked location access)
 
     return NextResponse.json({
       success: true,
-      message: 'Form submitted successfully',
+      message: data.type === 'permission' ? 'Permission recorded' : 'Form submitted successfully',
       emailId: emailData?.id,
     });
   } catch (error) {
