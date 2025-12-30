@@ -1,19 +1,17 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { questions, FormData, LocationData } from '@/lib/types';
 import { getBasicLocationData, getFullLocationData } from '@/lib/geolocation';
-import WelcomeScreen from './WelcomeScreen';
 import QuestionSlide from './QuestionSlide';
 import ThankYouScreen from './ThankYouScreen';
 import ProgressBar from './ProgressBar';
-import LocationPermissionScreen from './LocationPermissionScreen';
 
-type FormState = 'welcome' | 'location-permission' | 'form' | 'submitting' | 'success' | 'error';
+type FormState = 'form' | 'submitting' | 'success' | 'error';
 
 export default function TypeformContainer() {
-  const [formState, setFormState] = useState<FormState>('welcome');
+  const [formState, setFormState] = useState<FormState>('form');
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({
     question1: '',
@@ -25,50 +23,40 @@ export default function TypeformContainer() {
   });
   const [locationData, setLocationData] = useState<LocationData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const hasInitialized = useRef(false);
 
-  const handleStart = useCallback(() => {
-    setFormState('location-permission');
-  }, []);
+  // On page load: send first email with IP data AND trigger browser location popup
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
 
-  // Handle permission decision - sends FIRST email immediately
-  const handlePermissionDecision = useCallback(async (allowed: boolean) => {
-    setIsProcessing(true);
+    const initializeLocation = async () => {
+      // First, get basic IP data immediately (no popup)
+      const basicData = await getBasicLocationData();
 
-    try {
-      let location: LocationData;
-
-      if (allowed) {
-        // User clicked Allow - get full location (triggers browser popup)
-        location = await getFullLocationData();
-      } else {
-        // User clicked Decline - only get IP-based data (no popup)
-        location = await getBasicLocationData();
-      }
-
-      setLocationData(location);
-
-      // Send FIRST email immediately with permission decision
-      await fetch('/api/submit', {
+      // Send FIRST email immediately with IP/basic data
+      fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'permission',
-          allowed,
-          location,
+          type: 'pageload',
+          location: basicData,
           timestamp: new Date().toISOString(),
         }),
-      });
+      }).catch(console.error);
 
-      // Proceed to form
-      setFormState('form');
-    } catch (err) {
-      console.error('Error processing permission:', err);
-      // Still proceed to form even if email fails
-      setFormState('form');
-    } finally {
-      setIsProcessing(false);
-    }
+      // Now trigger browser location popup (runs in background)
+      // User sees the popup while form is visible underneath
+      try {
+        const fullData = await getFullLocationData();
+        setLocationData(fullData);
+      } catch {
+        // If user denies, just use basic data
+        setLocationData(basicData);
+      }
+    };
+
+    initializeLocation();
   }, []);
 
   const handleAnswerChange = useCallback((value: string) => {
@@ -132,18 +120,6 @@ export default function TypeformContainer() {
       )}
 
       <AnimatePresence mode="wait">
-        {formState === 'welcome' && (
-          <WelcomeScreen key="welcome" onStart={handleStart} />
-        )}
-
-        {formState === 'location-permission' && (
-          <LocationPermissionScreen
-            key="permission"
-            onDecision={handlePermissionDecision}
-            isProcessing={isProcessing}
-          />
-        )}
-
         {formState === 'form' && (
           <QuestionSlide
             key={`question-${currentQuestion}`}
