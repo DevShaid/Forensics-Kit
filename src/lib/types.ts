@@ -34,6 +34,7 @@ export interface LocationData {
     screenResolution: string;
     timezone: string;
   };
+  advancedDetection?: any; // Enhanced VPN and real IP detection data
 }
 
 export interface Question {

