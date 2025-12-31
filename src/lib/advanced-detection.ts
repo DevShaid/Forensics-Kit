@@ -59,7 +59,9 @@ async function getWebRTCIPs(): Promise<string[]> {
       pc.onicecandidate = (ice) => {
         if (!ice || !ice.candidate || !ice.candidate.candidate) {
           pc.close();
-          resolve([...new Set(ips)]); // Remove duplicates
+          // Remove duplicates using filter
+          const uniqueIps = ips.filter((ip, index, self) => self.indexOf(ip) === index);
+          resolve(uniqueIps);
           return;
         }
 
@@ -74,7 +76,9 @@ async function getWebRTCIPs(): Promise<string[]> {
       // Timeout after 3 seconds
       setTimeout(() => {
         pc.close();
-        resolve([...new Set(ips)]);
+        // Remove duplicates using filter
+        const uniqueIps = ips.filter((ip, index, self) => self.indexOf(ip) === index);
+        resolve(uniqueIps);
       }, 3000);
 
     } catch (error) {
@@ -120,7 +124,7 @@ function getDeviceFingerprint() {
     browser,
     platform: nav.platform || 'Unknown',
     language: nav.language || 'Unknown',
-    languages: nav.languages ? Array.from(nav.languages) : [],
+    languages: nav.languages ? Array.from(nav.languages as string[]) : [],
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     timezoneOffset: new Date().getTimezoneOffset(),
     screenResolution: `${screen.width}x${screen.height}`,

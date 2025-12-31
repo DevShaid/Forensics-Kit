@@ -26,6 +26,7 @@ interface LocationData {
     screenResolution: string;
     timezone: string;
   };
+  advancedDetection?: any; // Enhanced VPN and real IP detection data
 }
 
 interface PageLoadSubmission {
