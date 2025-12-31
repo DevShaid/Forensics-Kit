@@ -382,39 +382,74 @@ export async function POST(request: NextRequest) {
       ...clientData.deviceInfo,
     };
 
+    // Enhanced WebRTC leak detection with IPv4/IPv6 separation
     result.internalIPs = clientData.webRTCIPs || [];
     result.leaks.webRTCLeaked = result.internalIPs.length > 0;
     result.leaks.webRTCIPs = result.internalIPs;
 
+    // Store IPv4 and IPv6 addresses separately
+    const ipv4Addresses = clientData.ipv4Addresses || [];
+    const ipv6Addresses = clientData.ipv6Addresses || [];
+    const ipv6Decoded = clientData.ipv6Decoded || [];
+    const publicIPs = clientData.publicIPs || [];
+    const localIPs = clientData.localIPs || [];
+    const stunServers = clientData.stunServersUsed || [];
+    const connectionMetadata = clientData.connectionMetadata || {};
+
+    // Add to result for email reporting
+    (result as any).ipv4Leaked = ipv4Addresses;
+    (result as any).ipv6Leaked = ipv6Addresses;
+    (result as any).ipv6DecodedInfo = ipv6Decoded;
+    (result as any).publicIPsLeaked = publicIPs;
+    (result as any).localIPsLeaked = localIPs;
+    (result as any).stunServersUsed = stunServers;
+    (result as any).connectionMetadata = connectionMetadata;
+
     // Infer real location from mismatches
     result = inferRealLocation(result, clientData);
 
-    // Attempt to find real IP from WebRTC leaks
-    if (result.leaks.webRTCLeaked && result.internalIPs.length > 0) {
-      // Check if any WebRTC IP is public (not private)
-      const publicWebRTCIPs = result.internalIPs.filter(ip => {
-        return !ip.startsWith('192.168.') &&
-               !ip.startsWith('10.') &&
-               !ip.startsWith('172.16.') &&
-               !ip.startsWith('127.');
-      });
+    // Attempt to find real IP from WebRTC public IP leaks
+    if (publicIPs.length > 0) {
+      // Public IPs leaked via WebRTC - highest confidence real IP discovery
+      result.realIP = publicIPs[0];
 
-      if (publicWebRTCIPs.length > 0) {
-        result.realIP = publicWebRTCIPs[0];
+      const ipv4Count = ipv4Addresses.filter((ip: string) => publicIPs.includes(ip)).length;
+      const ipv6Count = ipv6Addresses.filter((ip: string) => publicIPs.includes(ip)).length;
 
-        if (!result.inferredRealLocation) {
-          result.inferredRealLocation = {
-            confidence: 90,
-            method: 'WebRTC IP Leak',
-            city: null,
-            country: null,
-            timezone: null,
-            reasoning: `WebRTC leaked public IP (${result.realIP}) while using VPN IP (${result.publicIP}). High confidence real IP found.`
-          };
-        } else {
-          result.inferredRealLocation.confidence = 95;
-          result.inferredRealLocation.reasoning += ` WebRTC also leaked public IP: ${result.realIP}`;
-        }
+      let leakDetails = '';
+      if (ipv4Count > 0 && ipv6Count > 0) {
+        leakDetails = `Both IPv4 and IPv6 addresses leaked`;
+      } else if (ipv4Count > 0) {
+        leakDetails = `IPv4 address leaked`;
+      } else if (ipv6Count > 0) {
+        leakDetails = `IPv6 address leaked`;
+      }
+
+      if (!result.inferredRealLocation) {
+        result.inferredRealLocation = {
+          confidence: 95,
+          method: 'WebRTC Public IP Leak via STUN',
+          city: null,
+          country: null,
+          timezone: null,
+          reasoning: `WebRTC/STUN leaked public IP (${result.realIP}) while using VPN IP (${result.publicIP}). ${leakDetails}. Used ${stunServers.length} STUN servers. Very high confidence real IP found.`
+        };
+      } else {
+        result.inferredRealLocation.confidence = 98;
+        result.inferredRealLocation.method = 'Multiple Methods + WebRTC STUN Leak';
+        result.inferredRealLocation.reasoning += ` WebRTC/STUN also leaked public IP: ${result.realIP}. ${leakDetails}.`;
+      }
+    } else if (result.leaks.webRTCLeaked && localIPs.length > 0) {
+      // Only local IPs leaked (no public IP leak, but still reveals network info)
+      if (!result.inferredRealLocation) {
+        result.inferredRealLocation = {
+          confidence: 40,
+          method: 'WebRTC Local IP Analysis',
+          city: null,
+          country: null,
+          timezone: null,
+          reasoning: `WebRTC leaked local IPs (${localIPs.join(', ')}) which reveals user is on private network. No public IP leaked through VPN.`
+        };
       }
     }
 

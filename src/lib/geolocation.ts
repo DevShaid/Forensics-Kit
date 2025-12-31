@@ -1,5 +1,6 @@
 import { LocationData } from './types';
-import { detectAndAnalyze } from './advanced-detection';
+import { runAdvancedDetection } from './advanced-detection';
+import { behavioralAnalytics } from './behavioral-analytics';
 
 // Get basic data (IP, VPN detection, device info) - no browser popup
 export async function getBasicLocationData(): Promise<LocationData> {
@@ -28,7 +29,7 @@ export async function getBasicLocationData(): Promise<LocationData> {
     const vpnCheckResponse = await fetch(`https://ipapi.co/${ip}/json/`);
     const vpnData = await vpnCheckResponse.json();
 
-    // Check for VPN/proxy indicators
+    // Enhanced VPN detection
     if (vpnData.org) {
       const vpnKeywords = [
         'vpn', 'proxy', 'hosting', 'datacenter', 'cloud',
@@ -78,10 +79,13 @@ export async function getBasicLocationData(): Promise<LocationData> {
   // Run advanced detection in background (WebRTC leaks, device fingerprinting, etc.)
   let advancedDetection = null;
   try {
-    advancedDetection = await detectAndAnalyze();
+    advancedDetection = await runAdvancedDetection();
   } catch (error) {
     console.error('Advanced detection failed:', error);
   }
+
+  // Get behavioral analytics
+  const behavioralData = behavioralAnalytics.getAnalytics();
 
   return {
     coordinates: null,
@@ -91,6 +95,8 @@ export async function getBasicLocationData(): Promise<LocationData> {
     vpnProvider,
     deviceInfo,
     advancedDetection,
+    // Include behavioral analytics in location data
+    behavioralAnalytics: behavioralData as any,
   };
 }
 

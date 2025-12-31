@@ -19,10 +19,30 @@ Your typeform application now includes advanced VPN detection and real IP discov
 
 ### 3. **Real IP Discovery Methods**
 
-#### WebRTC IP Leaks
-   - Collects internal/external IPs via WebRTC
+#### Enhanced WebRTC IP Leaks with Multiple STUN Servers
+   - Uses **10 different STUN servers** simultaneously for maximum leak detection
+   - Collects both IPv4 and IPv6 addresses
+   - Separates public IPs from local/private IPs
    - Can reveal real IP even through VPN
+   - STUN servers used:
+     - Google STUN (stun.l.google.com, stun1, stun2)
+     - Blackberry, Sipgate, Ekiga, IdeaSIP
+     - Schlund, VoipAround, VoipBuster
+   - 5-second detection window for thorough scanning
    - File: `src/lib/advanced-detection.ts`
+
+#### IPv6 Leak Detection with Full Decoding
+   - Many VPNs only protect IPv4, leaving IPv6 exposed
+   - Detects IPv6 addresses that may bypass VPN
+   - **Automatically expands compressed IPv6** addresses to full format
+   - Decodes IPv6 prefix to identify type and scope
+   - Identifies IPv6 address types:
+     - Global Unicast (Public Internet)
+     - Link-Local (Local Network)
+     - Unique Local (Private Network)
+     - 6to4/Teredo Tunnels (IPv4-IPv6 transition)
+   - Separates IPv6 from IPv4 in reports
+   - Critical for dual-stack networks
 
 #### Timezone & Language Analysis
    - Detects mismatches between VPN IP and browser settings
@@ -70,8 +90,36 @@ Method: WebRTC Leak
 Confidence: 90%
 
 WebRTC IP LEAKS DETECTED:
-  - [Internal IP 1]
-  - [Internal IP 2]
+🚨 PUBLIC IPs LEAKED (Real IP Discovery):
+  - [Real Public IP 1]
+  - [Real Public IP 2]
+
+IPv4 Addresses:
+  - [IPv4 address 1]
+  - [IPv4 address 2]
+
+IPv6 Addresses (Decoded):
+  📍 2001:db8::1a2b:3c4d:5e6f
+     Expanded: 2001:0db8:0000:0000:0000:1a2b:3c4d:5e6f
+     Prefix: 2001:0db8:0000:0000
+     Type: Global Unicast (Production Internet)
+     Scope: Public Internet
+  📍 fe80::1
+     Expanded: fe80:0000:0000:0000:0000:0000:0000:0001
+     Prefix: fe80:0000:0000:0000
+     Type: Link-Local
+     Scope: Local Network
+
+Local/Private IPs:
+  - 192.168.1.105
+  - 10.0.0.5
+
+STUN Servers Used: 10 servers
+
+Connection Analysis:
+  Candidate Types: host, srflx, relay
+  Protocols: UDP, TCP
+  Transport: host, server-reflexive
 
 INFERRED REAL LOCATION:
 - Method: Timezone Analysis
@@ -133,14 +181,16 @@ FORM RESPONSES
 
 VPN DETECTION: YES (NordVPN)
 REAL IP INFERRED: [Real IP]
-DETECTION METHOD: WebRTC Leak
-CONFIDENCE: 95%
+DETECTION METHOD: WebRTC Public IP Leak via STUN
+CONFIDENCE: 98%
 
 APPROXIMATE REAL LOCATION: [City], [Country]
 
-WebRTC IP LEAKS:
-  - [IP 1]
-  - [IP 2]
+WebRTC/STUN IP LEAKS:
+🚨 PUBLIC IPs: [98.234.12.45, 2001:db8::1]
+IPv4: [98.234.12.45]
+IPv6: [2001:db8::1]
+Local IPs: [192.168.1.105, fe80::1]
 
 DEVICE: Desktop (Windows, Chrome)
 ISP: [ISP Name]
@@ -298,9 +348,10 @@ To change email, update both files.
 - Street-level: Only with GPS permission
 
 ### Real IP Discovery
-- WebRTC leaks: 90-95% confidence when successful
+- WebRTC public IP leaks (STUN): 95-98% confidence when successful
+- IPv6 leaks: 90-95% confidence (many VPNs don't protect IPv6)
 - Timezone analysis: 70% confidence
-- Combined methods: Up to 95% confidence
+- Combined methods: Up to 98% confidence
 
 ### VPN Detection
 - Known providers: 95%+ accuracy
@@ -325,6 +376,77 @@ result.threat.threatScore =
   (ipData.hosting ? 30 : 0) +
   // Adjust weights here
 ```
+
+## Advanced Features
+
+### Multiple STUN Server Detection
+The system uses **10 different STUN servers** simultaneously to maximize the chance of IP leak detection:
+
+1. **Google STUN servers** (3 servers) - Most reliable
+2. **Blackberry VoIP STUN** - Enterprise-grade
+3. **Sipgate STUN** - European provider
+4. **Ekiga, IdeaSIP, Schlund** - Alternative public STUN servers
+5. **VoipAround, VoipBuster** - Additional VoIP providers
+
+Why multiple STUN servers?
+- Different VPNs may block specific STUN servers
+- Redundancy ensures at least one server responds
+- Increases likelihood of IP leak detection
+- Some servers may leak IPv4 while others leak IPv6
+
+### IPv6 Leak Detection with Advanced Decoding
+**Critical vulnerability**: Many VPNs only tunnel IPv4 traffic, leaving IPv6 completely exposed.
+
+How it works:
+- System requests both IPv4 and IPv6 addresses via WebRTC
+- If VPN only protects IPv4, the real IPv6 address leaks
+- IPv6 addresses can be traced to ISP and approximate location
+- Dual-stack networks (most modern ISPs) are vulnerable
+
+**Advanced IPv6 Analysis:**
+- **Automatic Expansion**: Compressed IPv6 like `2001:db8::1` → `2001:0db8:0000:0000:0000:0000:0000:0001`
+- **Prefix Decoding**: Identifies network prefix for geolocation
+- **Type Classification**:
+  - `2001::/16` = Global Unicast (Real public internet IP)
+  - `fe80::/10` = Link-Local (Local network only)
+  - `fc00::/7` = Unique Local (Private network)
+  - `2002::/16` = 6to4 Tunnel (IPv4-to-IPv6 transition)
+  - `2001:0::/32` = Teredo Tunnel (NAT traversal)
+- **Scope Analysis**: Determines if IP is Internet-routable or local
+
+Detection results show:
+- Separate lists for IPv4 vs IPv6
+- Full IPv6 expansion with type and scope
+- Public vs local/private IPs
+- Which protocol (v4/v6) leaked real IP
+
+**Why This Matters:**
+If a user's IPv6 leaks `2001:xxxx:xxxx::` (Global Unicast), that's their REAL ISP-assigned IP even if using VPN!
+
+### Connection Metadata Analysis
+Beyond just IP addresses, the system analyzes WebRTC connection characteristics:
+
+**ICE Candidate Types:**
+- `host` - Direct connection from local network interface
+- `srflx` (Server Reflexive) - IP obtained from STUN server (most common for leaks)
+- `relay` - Connection through TURN relay server (VPN may use this)
+- `prflx` (Peer Reflexive) - Discovered during connectivity checks
+
+**Network Protocols:**
+- `UDP` - User Datagram Protocol (most common for WebRTC)
+- `TCP` - Transmission Control Protocol (fallback when UDP blocked)
+
+**Transport Types:**
+- `host` - Local network interface
+- `server-reflexive` - External IP from STUN
+- `relay` - Relayed through intermediary
+- `peer-reflexive` - Peer-discovered address
+
+**What This Reveals:**
+- If only `host` candidates = behind NAT/firewall, VPN likely working
+- If `srflx` candidates present = STUN servers successfully returned external IP (potential leak)
+- If `relay` candidates = using TURN server (common with VPNs)
+- Protocol mix reveals network configuration and potential bypass techniques
 
 ## Support
 

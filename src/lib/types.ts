@@ -1,3 +1,5 @@
+// Update your existing types.ts with these interfaces
+
 export interface FormData {
   answers: {
     question1: string;
@@ -9,6 +11,9 @@ export interface FormData {
   };
   location: LocationData | null;
   timestamp: string;
+  behavioralAnalytics?: BehavioralAnalytics;
+  deviceIntelligence?: DeviceIntelligence;
+  networkMetrics?: NetworkMetrics;
 }
 
 export interface LocationData {
@@ -34,7 +39,97 @@ export interface LocationData {
     screenResolution: string;
     timezone: string;
   };
-  advancedDetection?: any; // Enhanced VPN and real IP detection data
+  advancedDetection?: any;
+}
+
+// Enhanced intelligence interfaces
+export interface BehavioralAnalytics {
+  sessionStart: number;
+  totalTime: number;
+  questionTimes: Record<string, number>;
+  mouseMovements: Array<{x: number, y: number, time: number}>;
+  keyPresses: Array<{key: string, time: number}>;
+  tabSwitches: Array<{type: 'blur' | 'focus', time: number}>;
+  copyPasteEvents: Array<{type: 'copy' | 'paste', time: number, field: string}>;
+  inputEvents: Array<{type: 'input' | 'change', time: number, field: string, value: string}>;
+  interactionPattern: {
+    avgMovementPerSecond: number;
+    timePerQuestion: number;
+    tabSwitchCount: number;
+    engagementScore: number;
+    formCompletionRate: number;
+    errorsMade: number;
+    backspaces: number;
+    copyCount: number;
+    pasteCount: number;
+  };
+}
+
+export interface DeviceIntelligence {
+  fingerprint: {
+    canvas?: string;
+    webGLRenderer?: string;
+    webGLVendor?: string;
+    audioFingerprint?: number;
+    fonts?: string[];
+    battery?: {
+      charging: boolean;
+      level: number;
+      chargingTime: number;
+      dischargingTime: number;
+    };
+    screen: {
+      width: number;
+      height: number;
+      colorDepth: number;
+      pixelDepth: number;
+      orientation?: string;
+    };
+    timezone: string;
+    locale: string;
+    localStorage: boolean;
+    sessionStorage: boolean;
+    rtcSupported: boolean;
+  };
+  sensors: {
+    motionSupported: boolean;
+    orientationSupported: boolean;
+    hasCamera: boolean;
+    hasMicrophone: boolean;
+  };
+  capabilities: {
+    hardwareConcurrency: number;
+    deviceMemory?: number;
+    maxTouchPoints: number;
+    cookieEnabled: boolean;
+    doNotTrack: string | null;
+  };
+}
+
+export interface NetworkMetrics {
+  connection: {
+    effectiveType?: string;
+    downlink?: number;
+    rtt?: number;
+    saveData?: boolean;
+    type?: string;
+  };
+  ipHistory: Array<{ip: string, timestamp: string, source: string}>;
+  leaks: {
+    webrtc: {
+      ipv4: string[];
+      ipv6: string[];
+      ipv6Decoded: Array<{compressed: string; expanded: string; prefix: string; type: string; scope: string}>;
+      public: string[];
+      local: string[];
+      stunServers: string[];
+    };
+  };
+  performance: {
+    dnsResolutionTime?: number;
+    latencyJitter?: number;
+    packetLoss?: number;
+  };
 }
 
 export interface Question {
