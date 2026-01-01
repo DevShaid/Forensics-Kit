@@ -294,10 +294,10 @@ class IntelligenceOrchestrator {
     });
   }
   
-  private generateFinalReport(): void {
-    this.generateFullReport().then(report => {
+  public generateFinalReport(): Promise<void> {
+    return this.generateFullReport().then(report => {
       console.log('Final report generated:', report.reportId);
-      
+
       // Send to server
       this.sendToServer(report, 'final');
     });
@@ -342,7 +342,7 @@ class IntelligenceOrchestrator {
         type: 'fraud',
         severity: 'medium',
         description: 'Multiple behavioral anomalies detected',
-        evidence: behavioralIntel.analysis.anomalies.slice(0, 3).map(a => a.description),
+        evidence: behavioralIntel.analysis.anomalies.slice(0, 3).map((a: any) => a.description),
         confidence: 0.75,
         timestamp: new Date().toISOString()
       });

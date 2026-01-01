@@ -146,8 +146,8 @@ export default function MobileQuestionSlide({
             placeholder={question.placeholder}
             className="mobile-textarea"
             rows={orientation === 'portrait' ? 4 : 8}
-            inputMode={question.type === 'email' ? 'email' : 
-                      question.type === 'tel' ? 'tel' : 'text'}
+            inputMode={question.id.includes('email') ? 'email' :
+                      question.id.includes('tel') ? 'tel' : 'text'}
             autoCapitalize="sentences"
             autoComplete={question.id.includes('name') ? 'name' : 
                          question.id.includes('email') ? 'email' : 
@@ -166,8 +166,8 @@ export default function MobileQuestionSlide({
             onFocus={handleInputFocus}
             placeholder={question.placeholder}
             className="mobile-input"
-            inputMode={question.type === 'email' ? 'email' : 
-                      question.type === 'tel' ? 'tel' : 
+            inputMode={question.id.includes('email') ? 'email' :
+                      question.id.includes('tel') ? 'tel' :
                       question.type === 'number' ? 'numeric' : 'text'}
             autoCapitalize={question.id.includes('name') ? 'words' : 'sentences'}
             autoComplete={question.id.includes('name') ? 'name' : 

@@ -52,7 +52,7 @@ export class QuantumSecurity {
       .join('');
   }
   
-  private sha256(message: string): string {
+  private sha256(message: string): Promise<string> {
     // Simple SHA-256 implementation for demonstration
     // In production, use Web Crypto API
     const encoder = new TextEncoder();

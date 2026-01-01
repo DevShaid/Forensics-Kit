@@ -46,8 +46,8 @@ export default function IPMonitorInitializer() {
         if (gl) {
           const debugInfo = (gl as any).getExtension('WEBGL_debug_renderer_info');
           if (debugInfo) {
-            fingerprint.webglVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-            fingerprint.webglRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+            fingerprint.webglVendor = (gl as any).getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+            fingerprint.webglRenderer = (gl as any).getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
           }
         }
 

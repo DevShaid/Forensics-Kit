@@ -17,7 +17,7 @@ export interface MobileDeviceInfo {
   isChineseROM: boolean;
 }
 
-export function detectMobileDevice(): MobileDeviceInfo {
+function detectMobileDevice(): MobileDeviceInfo {
   const ua = navigator.userAgent.toLowerCase();
   const platform = navigator.platform;
   const vendor = navigator.vendor || '';
@@ -163,7 +163,7 @@ export interface MobileNetworkInfo {
   estimatedSpeed: number; // Mbps
 }
 
-export async function getMobileNetworkInfo(): Promise<MobileNetworkInfo> {
+async function getMobileNetworkInfo(): Promise<MobileNetworkInfo> {
   const connection = (navigator as any).connection || 
                     (navigator as any).mozConnection || 
                     (navigator as any).webkitConnection;
@@ -265,7 +265,7 @@ export interface TouchIntelligence {
   };
 }
 
-export class MobileTouchTracker {
+class MobileTouchTracker {
   private touchEvents: TouchIntelligence['touchEvents'] = [];
   private gesturePatterns: TouchIntelligence['gesturePatterns'] = {
     isScrolling: false,
@@ -470,7 +470,7 @@ export class MobileTouchTracker {
   
   private detectSwipe(): boolean {
     // Simple swipe detection
-    for (const [touchId, startPos] of this.touchStartPositions) {
+    for (const [touchId, startPos] of Array.from(this.touchStartPositions)) {
       const endEvent = this.touchEvents
         .filter(e => e.touchId === touchId && e.type === 'touchend')
         .pop();
@@ -503,7 +503,7 @@ export interface MobilePerformanceInfo {
   isHighRefreshRate: boolean;
 }
 
-export async function getMobilePerformanceInfo(): Promise<MobilePerformanceInfo> {
+async function getMobilePerformanceInfo(): Promise<MobilePerformanceInfo> {
   let batteryLevel: number | null = null;
   let isCharging = false;
   let isLowPowerMode = false;
@@ -595,7 +595,7 @@ export interface MobileScreenInfo {
   hasPunchHoleCamera: boolean;
 }
 
-export function getMobileScreenInfo(): MobileScreenInfo {
+function getMobileScreenInfo(): MobileScreenInfo {
   const screen = window.screen;
   const orientation = screen.width < screen.height ? 'portrait' : 'landscape';
   
@@ -798,7 +798,7 @@ export interface MobileFormInteraction {
   keyboardHeight: number | null;
 }
 
-export class MobileFormTracker {
+class MobileFormTracker {
   private interactions: MobileFormInteraction = {
     inputMethod: 'touch',
     autoCompleteUsed: false,
@@ -960,7 +960,7 @@ export interface MobileRiskAssessment {
   confidence: number;
 }
 
-export function assessMobileRisk(
+function assessMobileRisk(
   deviceInfo: MobileDeviceInfo,
   networkInfo: MobileNetworkInfo,
   performanceInfo: MobilePerformanceInfo,

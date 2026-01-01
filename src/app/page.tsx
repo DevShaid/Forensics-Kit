@@ -1,9 +1,10 @@
-import TypeformContainer from '@/components/TypeformContainer';
+// app/page.tsx - UPDATE THIS
+import MobileTypeformContainer from '@/components/MobileTypeformContainer';
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-white">
-      <TypeformContainer />
+    <main>
+      <MobileTypeformContainer />
     </main>
   );
 }

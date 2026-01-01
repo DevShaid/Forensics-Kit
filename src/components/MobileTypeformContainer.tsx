@@ -488,6 +488,7 @@ export default function MobileTypeformContainer() {
                 isFirst={currentQuestion === 0}
                 isLast={currentQuestion === questions.length - 1}
                 isActive={true}
+                orientation={orientation}
               />
               
               {/* Mobile-optimized navigation hints */}

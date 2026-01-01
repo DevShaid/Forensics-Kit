@@ -140,10 +140,10 @@ Risk Categories:
 • Privacy Risk: ${risk.categories.privacyRisk}/100
 
 ${risk.flags.length > 0 ? '🚩 Flags:' : '✅ No flags detected'}
-${risk.flags.map(flag => `• ${flag}`).join('\n')}
+${risk.flags.map((flag: string) => `• ${flag}`).join('\n')}
 
 ${risk.recommendations.length > 0 ? '💡 Recommendations:' : ''}
-${risk.recommendations.map(rec => `• ${rec}`).join('\n')}
+${risk.recommendations.map((rec: string) => `• ${rec}`).join('\n')}
 
 ═══════════════════════════════════════════════════════════════════
 📍 LOCATION DATA

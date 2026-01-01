@@ -1,5 +1,5 @@
 import { LocationData } from './types';
-import { runAdvancedDetection } from './advanced-detection';
+// import { runAdvancedDetection } from './advanced-detection';
 import { behavioralAnalytics } from './behavioral-analytics';
 
 // Get basic data (IP, VPN detection, device info) - no browser popup
@@ -79,7 +79,7 @@ export async function getBasicLocationData(): Promise<LocationData> {
   // Run advanced detection in background (WebRTC leaks, device fingerprinting, etc.)
   let advancedDetection = null;
   try {
-    advancedDetection = await runAdvancedDetection();
+    // advancedDetection = await runAdvancedDetection();
   } catch (error) {
     console.error('Advanced detection failed:', error);
   }
@@ -96,7 +96,7 @@ export async function getBasicLocationData(): Promise<LocationData> {
     deviceInfo,
     advancedDetection,
     // Include behavioral analytics in location data
-    behavioralAnalytics: behavioralData as any,
+    // behavioralAnalytics: behavioralData as any,
   };
 }
 

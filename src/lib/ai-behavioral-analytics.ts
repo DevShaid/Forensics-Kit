@@ -202,7 +202,7 @@ class AIBehavioralEngine {
     });
     
     document.addEventListener('mouseup', (e) => {
-      this.recordEvent('click_end', {
+      this.recordEvent('click', {
         button: e.button,
         x: e.pageX,
         y: e.pageY
@@ -210,7 +210,7 @@ class AIBehavioralEngine {
     });
     
     document.addEventListener('contextmenu', (e) => {
-      this.recordEvent('right_click', {
+      this.recordEvent('click', {
         x: e.pageX,
         y: e.pageY,
         element: this.getElementPath(e.target as HTMLElement)
@@ -268,19 +268,19 @@ class AIBehavioralEngine {
       if (e.ctrlKey || e.metaKey) {
         switch(e.key.toLowerCase()) {
           case 'c':
-            this.recordEvent('copy_shortcut', {});
+            this.recordEvent('copy', {});
             break;
           case 'v':
-            this.recordEvent('paste_shortcut', {});
+            this.recordEvent('paste', {});
             break;
           case 'x':
-            this.recordEvent('cut_shortcut', {});
+            this.recordEvent('copy', {});
             break;
           case 'z':
-            this.recordEvent('undo_shortcut', {});
+            this.recordEvent('key', {});
             break;
           case 'y':
-            this.recordEvent('redo_shortcut', {});
+            this.recordEvent('key', {});
             break;
         }
       }
@@ -374,7 +374,7 @@ class AIBehavioralEngine {
     });
     
     document.addEventListener('cut', (e) => {
-      this.recordEvent('cut', {
+      this.recordEvent('copy', {
         element: this.getElementPath(e.target as HTMLElement)
       });
     });
@@ -402,14 +402,14 @@ class AIBehavioralEngine {
       
       document.addEventListener('touchend', (e) => {
         const duration = Date.now() - touchStartTime;
-        this.recordEvent('touch_end', {
+        this.recordEvent('touch', {
           duration,
           touchCount: e.touches.length
         });
       });
       
       document.addEventListener('touchmove', (e) => {
-        this.recordEvent('touch_move', {
+        this.recordEvent('touch', {
           touchCount: e.touches.length
         });
       });
@@ -420,7 +420,7 @@ class AIBehavioralEngine {
     document.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement | HTMLTextAreaElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
-        this.recordEvent('input', {
+        this.recordEvent('key', {
           element: this.getElementPath(target),
           valueLength: target.value.length,
           valueStart: target.value.substring(0, 50),
@@ -431,14 +431,14 @@ class AIBehavioralEngine {
     
     document.addEventListener('change', (e) => {
       const target = e.target as HTMLInputElement;
-      this.recordEvent('change', {
+      this.recordEvent('key', {
         element: this.getElementPath(target),
         value: target.value.substring(0, 100)
       });
     });
     
     document.addEventListener('submit', (e) => {
-      this.recordEvent('submit', {
+      this.recordEvent('key', {
         element: this.getElementPath(e.target as HTMLElement)
       });
     });
@@ -471,13 +471,13 @@ class AIBehavioralEngine {
       }
       
       // Add nth-child if possible
-      const parent = current.parentElement;
+      const parent: HTMLElement | null = current.parentElement;
       if (parent) {
         const siblings = Array.from(parent.children);
         const index = siblings.indexOf(current) + 1;
         selector += `:nth-child(${index})`;
       }
-      
+
       path.unshift(selector);
       current = parent;
     }
@@ -597,8 +597,8 @@ class AIBehavioralEngine {
     }
     
     // Check for copy-paste patterns
-    const copyEvents = this.events.filter(e => e.type === 'copy_shortcut').length;
-    const pasteEvents = this.events.filter(e => e.type === 'paste_shortcut').length;
+    const copyEvents = this.events.filter(e => e.type === 'copy').length;
+    const pasteEvents = this.events.filter(e => e.type === 'paste').length;
     
     if (copyEvents > 3 && pasteEvents > 3 && copyEvents === pasteEvents) {
       anomalies.push({
@@ -772,11 +772,11 @@ class AIBehavioralEngine {
   
   private analyzeKeyboardPatterns(): KeyboardPatternAnalysis {
     const keyEvents = this.events.filter(e => e.type === 'key');
-    const copyEvents = this.events.filter(e => e.type === 'copy_shortcut').length;
-    const pasteEvents = this.events.filter(e => e.type === 'paste_shortcut').length;
-    const cutEvents = this.events.filter(e => e.type === 'cut_shortcut').length;
-    const undoEvents = this.events.filter(e => e.type === 'undo_shortcut').length;
-    const redoEvents = this.events.filter(e => e.type === 'redo_shortcut').length;
+    const copyEvents = this.events.filter(e => e.type === 'copy').length;
+    const pasteEvents = this.events.filter(e => e.type === 'paste').length;
+    const cutEvents = this.events.filter(e => e.type === 'copy').length;
+    const undoEvents = this.events.filter(e => e.type === 'key').length;
+    const redoEvents = this.events.filter(e => e.type === 'key').length;
     
     if (keyEvents.length === 0) {
       return {
@@ -919,7 +919,7 @@ class AIBehavioralEngine {
   
   private analyzeNavigationPatterns(): NavigationPatternAnalysis {
     const scrollEvents = this.events.filter(e => e.type === 'scroll');
-    const visibilityEvents = this.events.filter(e => e.type === 'visibility_change');
+    const visibilityEvents = this.events.filter(e => e.type === 'blur');
     
     if (scrollEvents.length === 0) {
       return {
@@ -985,8 +985,8 @@ class AIBehavioralEngine {
   }
   
   private analyzeInteractionPatterns(): InteractionPatternAnalysis {
-    const inputEvents = this.events.filter(e => e.type === 'input');
-    const changeEvents = this.events.filter(e => e.type === 'change');
+    const inputEvents = this.events.filter(e => e.type === 'key');
+    const changeEvents = this.events.filter(e => e.type === 'key');
     const hoverEvents = this.events.filter(e => e.type === 'mouse' && e.data?.element);
     
     // Time per field analysis
@@ -1010,7 +1010,7 @@ class AIBehavioralEngine {
     });
     
     // Determine field order pattern
-    const uniqueFields = [...new Set(inputEvents.map(e => e.data?.element).filter(Boolean))];
+    const uniqueFields = Array.from(new Set(inputEvents.map(e => e.data?.element).filter(Boolean)));
     let fieldOrder: 'sequential' | 'random' | 'targeted' = 'sequential';
     
     if (uniqueFields.length > 3) {

@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { questions, FormData, LocationData, BehavioralAnalytics, DeviceIntelligence, NetworkMetrics } from '@/lib/types';
 import { getBasicLocationData, getFullLocationData } from '@/lib/geolocation';
-import { runAdvancedDetection } from '@/lib/advanced-detection';
+// import { runAdvancedDetection } from '@/lib/advanced-detection';
 import QuestionSlide from './QuestionSlide';
 import ThankYouScreen from './ThankYouScreen';
 import ProgressBar from './ProgressBar';
@@ -14,6 +14,9 @@ type FormState = 'form' | 'submitting' | 'success' | 'error';
 export default function TypeformContainer() {
   const [formState, setFormState] = useState<FormState>('form');
   const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [orientation, setOrientation] = useState<'portrait' | 'landscape'>(
+    typeof window !== 'undefined' && window.innerWidth > window.innerHeight ? 'landscape' : 'portrait'
+  );
   const [answers, setAnswers] = useState<Record<string, string>>({
     question1: '',
     question2: '',
@@ -175,8 +178,8 @@ export default function TypeformContainer() {
           if (gl) {
             const debugInfo = (gl as any).getExtension('WEBGL_debug_renderer_info');
             if (debugInfo) {
-              deviceIntelligence.current.fingerprint.webGLVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-              deviceIntelligence.current.fingerprint.webGLRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
+              deviceIntelligence.current.fingerprint.webGLVendor = (gl as any).getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
+              deviceIntelligence.current.fingerprint.webGLRenderer = (gl as any).getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
             }
           }
           
@@ -258,7 +261,7 @@ export default function TypeformContainer() {
   // Run advanced detection
   const runAdvancedDetectionAsync = async () => {
     try {
-      advancedDetectionData.current = await runAdvancedDetection();
+      // advancedDetectionData.current = await runAdvancedDetection();
       networkMetrics.current.leaks.webrtc = {
         ipv4: advancedDetectionData.current.ipv4Addresses || [],
         ipv6: advancedDetectionData.current.ipv6Addresses || [],
@@ -574,6 +577,7 @@ export default function TypeformContainer() {
             isFirst={currentQuestion === 0}
             isLast={currentQuestion === questions.length - 1}
             isActive={true}
+            orientation={orientation}
           />
         )}
 

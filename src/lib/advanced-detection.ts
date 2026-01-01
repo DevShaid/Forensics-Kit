@@ -109,6 +109,40 @@ class PatternRecognitionEngine {
   }
 }
 
+// Helper function to expand IPv6 addresses
+function expandIPv6(ip: string): string {
+  // Simple IPv6 expansion - fill in abbreviated sections
+  if (!ip.includes(':')) return ip;
+
+  const sections = ip.split(':');
+  const expandedSections: string[] = [];
+
+  for (const section of sections) {
+    if (section === '') {
+      // Handle :: notation
+      const missingSections = 8 - sections.filter(s => s !== '').length;
+      for (let i = 0; i <= missingSections; i++) {
+        expandedSections.push('0000');
+      }
+    } else {
+      expandedSections.push(section.padStart(4, '0'));
+    }
+  }
+
+  return expandedSections.slice(0, 8).join(':');
+}
+
+// Helper function to get WebRTC IPs
+async function getWebRTCIPs(): Promise<any> {
+  // Placeholder implementation
+  return {
+    ipv4: [],
+    ipv6: [],
+    localIPs: [],
+    publicIPs: []
+  };
+}
+
 // Advanced IPv6 Intelligence
 class IPv6Intelligence {
   static analyzeIPv6(ip: string): {
@@ -401,32 +435,32 @@ async function getGPUFingerprint(): Promise<{
   }
   
   const debugInfo = (gl as any).getExtension('WEBGL_debug_renderer_info');
-  const vendor = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'masked';
-  const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'masked';
+  const vendor = debugInfo ? (gl as any).getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : 'masked';
+  const renderer = debugInfo ? (gl as any).getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : 'masked';
   
   // Enhanced GPU detection
-  const extensions = gl.getSupportedExtensions() || [];
+  const extensions = (gl as any).getSupportedExtensions() || [];
   
   // Check for memory info extension
   let gpuMemory: number | null = null;
   const memoryInfo = (gl as any).getExtension('WEBGL_debug_renderer_info');
   if (memoryInfo) {
-    gpuMemory = gl.getParameter(0x9046) || // GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX
-                gl.getParameter(0x9047) || // GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX
+    gpuMemory = (gl as any).getParameter(0x9046) || // GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX
+                (gl as any).getParameter(0x9047) || // GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX
                 null;
   }
-  
+
   // Get maximum texture size
-  const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
-  
+  const maxTextureSize = (gl as any).getParameter((gl as any).MAX_TEXTURE_SIZE);
+
   // Get shading language version
-  const shadingLanguageVersion = gl.getParameter(gl.SHADING_LANGUAGE_VERSION);
-  
+  const shadingLanguageVersion = (gl as any).getParameter((gl as any).SHADING_LANGUAGE_VERSION);
+
   // Get precision capabilities
   const precision = {
-    highFloat: gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT)?.precision || 'unknown',
-    mediumFloat: gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.MEDIUM_FLOAT)?.precision || 'unknown',
-    lowFloat: gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.LOW_FLOAT)?.precision || 'unknown',
+    highFloat: (gl as any).getShaderPrecisionFormat((gl as any).FRAGMENT_SHADER, (gl as any).HIGH_FLOAT)?.precision || 'unknown',
+    mediumFloat: (gl as any).getShaderPrecisionFormat((gl as any).FRAGMENT_SHADER, (gl as any).MEDIUM_FLOAT)?.precision || 'unknown',
+    lowFloat: (gl as any).getShaderPrecisionFormat((gl as any).FRAGMENT_SHADER, (gl as any).LOW_FLOAT)?.precision || 'unknown',
   };
   
   return {
@@ -802,7 +836,7 @@ async function getBatteryIntelligence(): Promise<{
       charging: false,
       chargingTime: 0,
       dischargingTime: 0,
-      health: 'unknown',
+      health: 'fair' as 'fair' | 'poor' | 'good' | 'excellent',
       estimatedCapacity: null,
       chargeCycles: null
     };
@@ -852,7 +886,7 @@ async function getBatteryIntelligence(): Promise<{
       charging: false,
       chargingTime: 0,
       dischargingTime: 0,
-      health: 'unknown',
+      health: 'fair' as 'fair' | 'poor' | 'good' | 'excellent',
       estimatedCapacity: null,
       chargeCycles: null
     };
@@ -974,7 +1008,7 @@ function getTimezoneIntelligence(): {
 } {
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-  const locales = navigator.languages || [navigator.language];
+  const locales = Array.from(navigator.languages || [navigator.language]);
   const timezoneOffset = new Date().getTimezoneOffset();
   
   // Extract region from timezone
