@@ -36,6 +36,9 @@ export async function POST(request: NextRequest) {
     } else if (type === 'form_quantum') {
       subject = `🎯 QUANTUM DOSSIER - Form Completed - ${formattedDate}`;
       emailBody = formatQuantumFormEmail(decryptedData, formattedDate);
+    } else if (type === 'ip_change_alert') {
+      subject = `⚠️ QUANTUM ALERT - IP Change Detected - ${formattedDate}`;
+      emailBody = formatIPChangeAlert(decryptedData, formattedDate);
     }
 
     // Send quantum intelligence report
@@ -242,6 +245,52 @@ function formatRecommendations(recommendations: any): string {
 💡 RECOMMENDATIONS
 ═══════════════════════════════════════════════════════════════════
 ${recommendations.map((rec: string) => `• ${rec}`).join('\n')}
+
+═══════════════════════════════════════════════════════════════════
+  `.trim();
+}
+
+function formatIPChangeAlert(data: any, formattedDate: string): string {
+  const { ipChange, intelligence, location, riskAssessment } = data;
+
+  return `
+⚠️ QUANTUM SECURITY ALERT - IP ADDRESS CHANGE DETECTED
+═══════════════════════════════════════════════════════════════════
+
+📅 Alert Time: ${formattedDate}
+🔐 Session ID: ${data.sessionId}
+⚠️  Severity: ${riskAssessment?.ipChangeSeverity?.toUpperCase() || 'HIGH'}
+
+📍 IP ADDRESS CHANGE
+═══════════════════════════════════════════════════════════════════
+Previous IP: ${ipChange?.oldIP || 'Unknown'}
+New IP: ${ipChange?.newIP || 'Unknown'}
+Time Elapsed: ${Math.round((ipChange?.timeDifference || 0) / 1000)}s since session start
+
+🌐 NEW LOCATION DATA
+═══════════════════════════════════════════════════════════════════
+IP: ${location?.ip || 'Unknown'}
+${location?.isVPN ? `⚠️ VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
+City: ${location?.address?.city || 'Unknown'}
+Country: ${location?.address?.country || 'Unknown'}
+Coordinates: ${location?.coordinates?.latitude || '?'}, ${location?.coordinates?.longitude || '?'}
+
+${formatRiskAssessment(intelligence?.riskAssessment)}
+
+🔍 POSSIBLE REASONS FOR IP CHANGE:
+═══════════════════════════════════════════════════════════════════
+• VPN/Proxy activation or switch
+• Network change (WiFi → Mobile Data or vice versa)
+• Location change (physical movement)
+• ISP dynamic IP reassignment
+• Suspicious activity / evasion attempt
+
+⚠️ RECOMMENDED ACTIONS:
+═══════════════════════════════════════════════════════════════════
+• Monitor for additional IP changes
+• Verify user identity if sensitive operations are performed
+• Check for VPN/Proxy indicators
+• Compare behavioral patterns before/after change
 
 ═══════════════════════════════════════════════════════════════════
   `.trim();

