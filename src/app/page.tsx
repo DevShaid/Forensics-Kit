@@ -1,14 +1,23 @@
 // app/page.tsx
 'use client';
 
-import { useState } from 'react';
-import WelcomeScreen from '@/components/WelcomeScreen';
-import TypeformContainer from '@/components/TypeformContainer';
+import { useState, useEffect } from 'react';
+import dynamicImport from 'next/dynamic';
 
-export const dynamic = 'force-dynamic';
+const WelcomeScreen = dynamicImport(() => import('@/components/WelcomeScreen'), { ssr: false });
+const TypeformContainer = dynamicImport(() => import('@/components/TypeformContainer'), { ssr: false });
 
 export default function Home() {
   const [showForm, setShowForm] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <main>
