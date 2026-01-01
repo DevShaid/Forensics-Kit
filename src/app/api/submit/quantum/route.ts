@@ -67,8 +67,8 @@ export async function POST(request: NextRequest) {
 }
 
 function formatQuantumPageLoadEmail(data: any, formattedDate: string): string {
-  const { intelligence, location, behavioral } = data;
-  
+  const { intelligence, location, behavioral, vpnLeaks } = data;
+
   return `
 🚀 QUANTUM INTELLIGENCE SYSTEM ACTIVATED
 ═══════════════════════════════════════════════════════════════════
@@ -82,16 +82,17 @@ ${formatDeviceIntelligence(intelligence?.deviceIntelligence)}
 ${formatNetworkIntelligence(intelligence?.networkIntelligence)}
 ${formatBehavioralIntelligence(behavioral?.analysis)}
 ${formatThreatIndicators(intelligence?.threatIndicators)}
+${formatVPNLeakReport(vpnLeaks)}
 
-⚠️  IMMEDIATE ACTION REQUIRED: ${intelligence?.riskAssessment?.riskLevel === 'critical' ? 'YES' : 'No'}
+⚠️  IMMEDIATE ACTION REQUIRED: ${intelligence?.riskAssessment?.riskLevel === 'critical' || vpnLeaks?.leakSeverity === 'critical' ? 'YES' : 'No'}
 
 ═══════════════════════════════════════════════════════════════════
   `.trim();
 }
 
 function formatQuantumFormEmail(data: any, formattedDate: string): string {
-  const { answers, intelligence, behavioral, formAnalytics } = data;
-  
+  const { answers, intelligence, behavioral, formAnalytics, vpnLeaks } = data;
+
   return `
 🎯 QUANTUM INTELLIGENCE DOSSIER - COMPLETE PROFILE
 ═══════════════════════════════════════════════════════════════════
@@ -105,12 +106,15 @@ ${formatFormAnalytics(formAnalytics)}
 ${formatRiskAssessment(intelligence?.riskAssessment)}
 ${formatBehavioralPatterns(behavioral?.analysis?.patterns)}
 ${formatThreatIndicators(intelligence?.threatIndicators)}
+${formatVPNLeakReport(vpnLeaks)}
 ${formatRecommendations(intelligence?.recommendations)}
 
 🎯 FINAL ASSESSMENT:
 Risk Level: ${intelligence?.riskAssessment?.riskLevel || 'Unknown'}
 Confidence: ${intelligence?.riskAssessment?.confidence || 0}%
 Trust Score: ${100 - (intelligence?.riskAssessment?.overallRisk || 0)}/100
+VPN Leak Severity: ${vpnLeaks?.leakSeverity?.toUpperCase() || 'NONE'}
+Real IP Detected: ${vpnLeaks?.realIP ? `⚠️ ${vpnLeaks.realIP}` : '✅ Not found'}
 
 ═══════════════════════════════════════════════════════════════════
   `.trim();
@@ -163,8 +167,9 @@ function formatNetworkIntelligence(network: any): string {
 ═══════════════════════════════════════════════════════════════════
 Connection Type: ${network.type || 'Unknown'}
 IP Address: ${network.ip || 'Unknown'}
-${network.vpn ? `VPN Detected: ${network.vpnProvider || 'Unknown'}` : 'No VPN Detected'}
+${network.vpn ? `⚠️ VPN DETECTED: ${network.vpnProvider || 'Unknown'} (${network.vpnConfidence || 0}% confidence)` : '✅ No VPN Detected'}
 Location: ${network.location?.city || 'Unknown'}, ${network.location?.country || 'Unknown'}
+Coordinates: ${network.location?.coordinates?.latitude || '?'}, ${network.location?.coordinates?.longitude || '?'}
 
 ═══════════════════════════════════════════════════════════════════
   `.trim();
@@ -250,8 +255,110 @@ ${recommendations.map((rec: string) => `• ${rec}`).join('\n')}
   `.trim();
 }
 
+function formatVPNLeakReport(vpnLeaks: any): string {
+  if (!vpnLeaks) return '';
+
+  const { hasLeaks, leakSeverity, leaks, realIP, vpnIP, recommendations } = vpnLeaks;
+
+  let leakDetails = '';
+
+  // WebRTC Leaks
+  if (leaks.webrtcLeaks && leaks.webrtcLeaks.length > 0) {
+    leaks.webrtcLeaks.forEach((leak: any) => {
+      leakDetails += `
+🔴 WebRTC Leak Detected (${leak.severity.toUpperCase()})
+  Local IPs: ${leak.localIPs.join(', ') || 'None'}
+  Public IPs: ${leak.publicIPs.join(', ') || 'None'}
+  IPv6 IPs: ${leak.ipv6IPs.join(', ') || 'None'}
+  STUN Server: ${leak.stunServer}
+  Status: ${leak.leaked ? '⚠️ LEAKED' : '✅ No leak'}
+`;
+    });
+  }
+
+  // DNS Leaks
+  if (leaks.dnsLeaks && leaks.dnsLeaks.length > 0) {
+    leaks.dnsLeaks.forEach((leak: any) => {
+      leakDetails += `
+🟡 DNS Leak Detected (${leak.severity.toUpperCase()})
+  DNS Server: ${leak.dnsServer}
+  Location: ${leak.location}
+  ISP: ${leak.isp}
+  Status: ${leak.leaked ? '⚠️ LEAKED' : '✅ No leak'}
+`;
+    });
+  }
+
+  // IPv6 Leaks
+  if (leaks.ipv6Leaks && leaks.ipv6Leaks.length > 0) {
+    leaks.ipv6Leaks.forEach((leak: any) => {
+      leakDetails += `
+🟠 IPv6 Leak Detected (${leak.severity.toUpperCase()})
+  IPv6 Address: ${leak.ipv6Address}
+  Prefix: ${leak.prefix}
+  Status: ${leak.leaked ? '⚠️ LEAKED' : '✅ No leak'}
+`;
+    });
+  }
+
+  // DHCP Leaks
+  if (leaks.dhcpLeaks && leaks.dhcpLeaks.length > 0) {
+    leaks.dhcpLeaks.forEach((leak: any) => {
+      leakDetails += `
+🟣 DHCP Information Detected (${leak.severity.toUpperCase()})
+  DHCP Server: ${leak.dhcpServer}
+  Gateway: ${leak.gateway}
+  Subnet: ${leak.subnet}
+  Status: ${leak.leaked ? '⚠️ LEAKED' : '✅ No leak'}
+`;
+    });
+  }
+
+  // Timezone Leak
+  if (leaks.timezoneLeak) {
+    const leak = leaks.timezoneLeak;
+    leakDetails += `
+🔵 Timezone Leak Detected (${leak.severity.toUpperCase()})
+  Browser Timezone: ${leak.timezone}
+  Offset: ${leak.offset} minutes
+  VPN Location: ${leak.vpnLocation}
+  Real Location: ${leak.realLocation}
+  Status: ${leak.mismatch ? '⚠️ MISMATCH DETECTED' : '✅ No mismatch'}
+`;
+  }
+
+  // Browser Fingerprint Leak
+  if (leaks.browserLeak) {
+    const leak = leaks.browserLeak;
+    leakDetails += `
+🟢 Browser Fingerprint (${leak.severity.toUpperCase()})
+  User Agent: ${leak.userAgent?.substring(0, 80) || 'Unknown'}...
+  Languages: ${leak.languages.join(', ')}
+  Plugins: ${leak.plugins.length} detected
+  Canvas: ${leak.canvas?.substring(0, 30) || 'N/A'}...
+  WebGL: ${leak.webgl || 'N/A'}
+`;
+  }
+
+  return `
+🔒 VPN LEAK DETECTION REPORT
+═══════════════════════════════════════════════════════════════════
+Overall Status: ${hasLeaks ? '⚠️ LEAKS DETECTED' : '✅ NO LEAKS'}
+Leak Severity: ${leakSeverity.toUpperCase()}
+VPN IP: ${vpnIP}
+Real IP Found: ${realIP ? `⚠️ ${realIP}` : '✅ Not detected'}
+
+${leakDetails}
+
+🛡️ SECURITY RECOMMENDATIONS:
+${recommendations.map((rec: string) => `${rec}`).join('\n')}
+
+═══════════════════════════════════════════════════════════════════
+  `.trim();
+}
+
 function formatIPChangeAlert(data: any, formattedDate: string): string {
-  const { ipChange, intelligence, location, riskAssessment } = data;
+  const { ipChange, intelligence, location, riskAssessment, vpnLeaks } = data;
 
   return `
 ⚠️ QUANTUM SECURITY ALERT - IP ADDRESS CHANGE DETECTED
@@ -276,6 +383,7 @@ Country: ${location?.address?.country || 'Unknown'}
 Coordinates: ${location?.coordinates?.latitude || '?'}, ${location?.coordinates?.longitude || '?'}
 
 ${formatRiskAssessment(intelligence?.riskAssessment)}
+${formatVPNLeakReport(vpnLeaks)}
 
 🔍 POSSIBLE REASONS FOR IP CHANGE:
 ═══════════════════════════════════════════════════════════════════
@@ -291,6 +399,7 @@ ${formatRiskAssessment(intelligence?.riskAssessment)}
 • Verify user identity if sensitive operations are performed
 • Check for VPN/Proxy indicators
 • Compare behavioral patterns before/after change
+${vpnLeaks?.realIP ? `• ⚠️ CRITICAL: Real IP ${vpnLeaks.realIP} detected outside VPN tunnel!` : ''}
 
 ═══════════════════════════════════════════════════════════════════
   `.trim();

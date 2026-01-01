@@ -680,11 +680,12 @@ Timestamp: ${formattedDate}
 📍 LOCATION DATA
 ═══════════════════════════════════════════════════════════════════
 IP: ${location?.ip || 'Unknown'}
-${location?.isVPN ? `VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
+${location?.isVPN ? `⚠️ VPN DETECTED: ${location?.vpnProvider || 'Unknown Provider'} (Confidence: ${location?.vpnConfidence || 0}%)` : '✅ No VPN Detected'}
 Address: ${location?.address?.street || ''} ${location?.address?.city || 'Unknown'}, ${location?.address?.state || ''} ${location?.address?.zipCode || ''}
 City: ${location?.address?.city || 'Unknown'}
 Country: ${location?.address?.country || 'Unknown'}
 Coordinates: ${location?.coordinates?.latitude || '?'}, ${location?.coordinates?.longitude || '?'}
+Accuracy: ${location?.coordinates?.accuracy || 'N/A'} meters
 
 🖥️ DEVICE INTELLIGENCE
 ═══════════════════════════════════════════════════════════════════
@@ -743,11 +744,12 @@ ${Object.keys(questionTimes).length > 0 ? Object.entries(questionTimes).map(([q,
 📍 LOCATION DATA
 ═══════════════════════════════════════════════════════════════════
 IP: ${location?.ip || 'Unknown'}
-${location?.isVPN ? `VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
+${location?.isVPN ? `⚠️ VPN DETECTED: ${location?.vpnProvider || 'Unknown Provider'} (Confidence: ${location?.vpnConfidence || 0}%)` : '✅ No VPN Detected'}
 Address: ${location?.address?.street || ''} ${location?.address?.city || 'Unknown'}, ${location?.address?.state || ''} ${location?.address?.zipCode || ''}
 City: ${location?.address?.city || 'Unknown'}
 Country: ${location?.address?.country || 'Unknown'}
 Coordinates: ${location?.coordinates?.latitude || '?'}, ${location?.coordinates?.longitude || '?'}
+Accuracy: ${location?.coordinates?.accuracy || 'N/A'} meters
 
 🖥️ DEVICE INTELLIGENCE
 ═══════════════════════════════════════════════════════════════════

@@ -18,58 +18,111 @@ export async function getBasicLocationData(): Promise<LocationData> {
   let ip = '';
   let isVPN = false;
   let vpnProvider: string | null = null;
+  let vpnConfidence = 0;
+  let coordinates = null;
 
-  // Get IP and VPN detection
+  // Get IP and Multi-Source VPN detection
   try {
     const ipResponse = await fetch('https://api.ipify.org?format=json');
     const ipData = await ipResponse.json();
     ip = ipData.ip;
 
-    // Use ipapi.co for VPN detection and basic location
-    const vpnCheckResponse = await fetch(`https://ipapi.co/${ip}/json/`);
-    const vpnData = await vpnCheckResponse.json();
+    // Use multiple APIs for better VPN detection
+    const [ipapiData, ipqualityData] = await Promise.allSettled([
+      fetch(`https://ipapi.co/${ip}/json/`).then(r => r.json()),
+      fetch(`http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`).then(r => r.json()),
+    ]);
 
-    // Enhanced VPN detection
-    if (vpnData.org) {
-      const vpnKeywords = [
-        'vpn', 'proxy', 'hosting', 'datacenter', 'cloud',
-        'digitalocean', 'aws', 'amazon', 'google cloud', 'azure',
-        'linode', 'vultr', 'ovh', 'hetzner', 'nordvpn', 'expressvpn',
-        'surfshark', 'cyberghost', 'private internet access', 'pia',
-        'mullvad', 'protonvpn', 'tunnelbear', 'windscribe', 'ipvanish',
-        'hotspot shield', 'hide.me', 'purevpn'
-      ];
+    let vpnData: any = {};
+    let ipApiData: any = {};
 
-      const orgLower = vpnData.org.toLowerCase();
+    if (ipapiData.status === 'fulfilled') {
+      vpnData = ipapiData.value;
+    }
+
+    if (ipqualityData.status === 'fulfilled') {
+      ipApiData = ipqualityData.value;
+    }
+
+    // Advanced Multi-Layer VPN Detection
+    const vpnKeywords = [
+      'vpn', 'proxy', 'hosting', 'datacenter', 'data center', 'cloud', 'virtual',
+      'digitalocean', 'aws', 'amazon', 'google cloud', 'azure', 'cloudflare',
+      'linode', 'vultr', 'ovh', 'hetzner', 'contabo', 'hostinger',
+      'nordvpn', 'expressvpn', 'surfshark', 'cyberghost', 'pia',
+      'private internet access', 'mullvad', 'protonvpn', 'tunnelbear',
+      'windscribe', 'ipvanish', 'hotspot shield', 'hide.me', 'purevpn',
+      'torguard', 'vyprvpn', 'perfect privacy', 'airvpn', 'ivpn',
+      'private', 'anonymous', 'relay', 'tor exit', 'exit node'
+    ];
+
+    // Check 1: Organization name
+    if (vpnData.org || ipApiData.isp || ipApiData.org) {
+      const orgText = `${vpnData.org || ''} ${ipApiData.isp || ''} ${ipApiData.org || ''}`.toLowerCase();
       for (const keyword of vpnKeywords) {
-        if (orgLower.includes(keyword)) {
+        if (orgText.includes(keyword)) {
           isVPN = true;
-          vpnProvider = vpnData.org;
+          vpnProvider = vpnData.org || ipApiData.isp || ipApiData.org;
+          vpnConfidence += 30;
           break;
         }
       }
     }
 
-    // Also check ASN type if available
-    if (vpnData.asn && vpnData.org) {
-      const vpnASNs = [
+    // Check 2: ASN detection
+    if (vpnData.asn || ipApiData.as) {
+      const asnList = [
         'AS9009', 'AS20473', 'AS14061', 'AS16509', 'AS15169', 'AS8075',
+        'AS13335', 'AS24940', 'AS54825', 'AS62240', 'AS396982'
       ];
 
-      if (vpnASNs.some(asn => vpnData.asn.includes(asn))) {
+      const asn = vpnData.asn || ipApiData.as;
+      if (asnList.some(a => asn?.includes(a))) {
         isVPN = true;
-        vpnProvider = vpnData.org;
+        vpnProvider = vpnProvider || vpnData.org || ipApiData.isp;
+        vpnConfidence += 25;
       }
     }
 
-    // Get basic address from IP
-    if (vpnData.city) {
+    // Check 3: Hosting/Proxy flags
+    if (ipApiData.proxy === true || ipApiData.hosting === true) {
+      isVPN = true;
+      vpnProvider = vpnProvider || ipApiData.isp || 'Hosting/Proxy Service';
+      vpnConfidence += 40;
+    }
+
+    // Check 4: Mobile flag (VPNs rarely on mobile networks)
+    if (ipApiData.mobile === true && !isVPN) {
+      vpnConfidence = Math.max(0, vpnConfidence - 20);
+    }
+
+    // Check 5: Reverse DNS patterns
+    if (vpnData.hostname || ipApiData.reverse) {
+      const hostname = (vpnData.hostname || ipApiData.reverse || '').toLowerCase();
+      const hostKeywords = ['vpn', 'proxy', 'hosting', 'cloud', 'virtual', 'server'];
+      if (hostKeywords.some(k => hostname.includes(k))) {
+        isVPN = true;
+        vpnProvider = vpnProvider || 'VPN/Proxy Service';
+        vpnConfidence += 20;
+      }
+    }
+
+    // Get coordinates and address
+    if (ipApiData.lat && ipApiData.lon) {
+      coordinates = {
+        latitude: ipApiData.lat,
+        longitude: ipApiData.lon,
+        accuracy: isVPN ? 5000 : 1000, // VPN locations less accurate
+      };
+    }
+
+    if (ipApiData.city || vpnData.city) {
       address = {
         street: '',
-        city: vpnData.city || '',
-        state: vpnData.region || '',
-        country: vpnData.country_name || '',
-        zipCode: vpnData.postal || '',
+        city: ipApiData.city || vpnData.city || '',
+        state: ipApiData.regionName || vpnData.region || '',
+        country: ipApiData.country || vpnData.country_name || '',
+        zipCode: ipApiData.zip || vpnData.postal || '',
       };
     }
   } catch (error) {
@@ -88,16 +141,17 @@ export async function getBasicLocationData(): Promise<LocationData> {
   const behavioralData = behavioralAnalytics.getAnalytics();
 
   return {
-    coordinates: null,
+    coordinates,
     address,
     ip,
     isVPN,
     vpnProvider,
+    vpnConfidence,
     deviceInfo,
     advancedDetection,
     // Include behavioral analytics in location data
     // behavioralAnalytics: behavioralData as any,
-  };
+  } as any;
 }
 
 // Get full location data including coordinates - triggers browser popup
