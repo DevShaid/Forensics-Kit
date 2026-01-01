@@ -655,6 +655,9 @@ function generateHTMLRecommendations(risk: any, device: any, behavioral: any): s
 
 function formatPageLoadEmail(data: any, formattedDate: string): string {
   const { location, behavioralAnalytics, deviceIntelligence, networkMetrics } = data;
+  const fingerprint = deviceIntelligence?.fingerprint || {};
+  const capabilities = deviceIntelligence?.capabilities || {};
+  const connection = networkMetrics?.connection || {};
 
   return `
 🚀 VISITOR DETECTED - Desktop/Web
@@ -666,34 +669,50 @@ Timestamp: ${formattedDate}
 IP: ${location?.ip || 'Unknown'}
 ${location?.isVPN ? `VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
 ${location?.address || 'Location not available'}
+City: ${location?.city || 'Unknown'}
+Country: ${location?.country || 'Unknown'}
+Coordinates: ${location?.lat || '?'}, ${location?.lon || '?'}
 
 🖥️ DEVICE INTELLIGENCE
 ═══════════════════════════════════════════════════════════════════
-User Agent: ${deviceIntelligence?.userAgent || 'Unknown'}
-Platform: ${deviceIntelligence?.platform || 'Unknown'}
-Language: ${deviceIntelligence?.language || 'Unknown'}
-Screen: ${deviceIntelligence?.screen?.width || '?'}x${deviceIntelligence?.screen?.height || '?'}
-Timezone: ${deviceIntelligence?.timezone || 'Unknown'}
+Screen Resolution: ${fingerprint?.screen?.width || '?'}x${fingerprint?.screen?.height || '?'}
+Color Depth: ${fingerprint?.screen?.colorDepth || '?'} bits
+Pixel Depth: ${fingerprint?.screen?.pixelDepth || '?'} bits
+Timezone: ${fingerprint?.timezone || 'Unknown'}
+Locale: ${fingerprint?.locale || 'Unknown'}
+Hardware Concurrency: ${capabilities?.hardwareConcurrency || '?'} cores
+Device Memory: ${capabilities?.deviceMemory || '?'} GB
+Max Touch Points: ${capabilities?.maxTouchPoints || 0}
+Cookie Enabled: ${capabilities?.cookieEnabled ? 'Yes' : 'No'}
+Do Not Track: ${capabilities?.doNotTrack || 'Not set'}
 
 🌐 NETWORK METRICS
 ═══════════════════════════════════════════════════════════════════
-Connection Type: ${networkMetrics?.effectiveType || 'Unknown'}
-Downlink: ${networkMetrics?.downlink || 'Unknown'} Mbps
-RTT: ${networkMetrics?.rtt || 'Unknown'} ms
+Connection Type: ${connection?.effectiveType || 'Unknown'}
+Downlink: ${connection?.downlink || 'Unknown'} Mbps
+RTT: ${connection?.rtt || 'Unknown'} ms
+Save Data: ${connection?.saveData ? 'Enabled' : 'Disabled'}
 
 🧠 BEHAVIORAL ANALYTICS
 ═══════════════════════════════════════════════════════════════════
 Mouse Movements: ${behavioralAnalytics?.mouseMovements?.length || 0}
-Clicks: ${behavioralAnalytics?.clicks?.length || 0}
-Scroll Events: ${behavioralAnalytics?.scrollEvents?.length || 0}
+Key Presses: ${behavioralAnalytics?.keyPresses?.length || 0}
 Time on Page: ${Math.round((behavioralAnalytics?.totalTime || 0) / 1000)}s
+Tab Switches: ${behavioralAnalytics?.tabSwitches?.length || 0}
+Copy Events: ${behavioralAnalytics?.interactionPattern?.copyCount || 0}
+Paste Events: ${behavioralAnalytics?.interactionPattern?.pasteCount || 0}
+Backspaces: ${behavioralAnalytics?.interactionPattern?.backspaces || 0}
+Engagement Score: ${behavioralAnalytics?.interactionPattern?.engagementScore || 0}/100
 
 ═══════════════════════════════════════════════════════════════════
   `.trim();
 }
 
 function formatFormCompleteEmail(data: any, formattedDate: string): string {
-  const { answers, location, behavioralAnalytics, deviceIntelligence } = data;
+  const { answers, location, behavioralAnalytics, deviceIntelligence, networkMetrics } = data;
+  const fingerprint = deviceIntelligence?.fingerprint || {};
+  const capabilities = deviceIntelligence?.capabilities || {};
+  const questionTimes = behavioralAnalytics?.questionTimes || {};
 
   return `
 ✅ FORM COMPLETED - Desktop/Web
@@ -704,24 +723,46 @@ Timestamp: ${formattedDate}
 ═══════════════════════════════════════════════════════════════════
 ${answers ? Object.entries(answers).map(([key, value]) => `${key}: ${value}`).join('\n') : 'No answers'}
 
+⏱️ QUESTION TIMES
+═══════════════════════════════════════════════════════════════════
+${Object.keys(questionTimes).length > 0 ? Object.entries(questionTimes).map(([q, time]) => `${q}: ${Math.round((time as number) / 1000)}s`).join('\n') : 'Not available'}
+
 📍 LOCATION DATA
 ═══════════════════════════════════════════════════════════════════
 IP: ${location?.ip || 'Unknown'}
 ${location?.isVPN ? `VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
 ${location?.address || 'Location not available'}
+City: ${location?.city || 'Unknown'}
+Country: ${location?.country || 'Unknown'}
 
 🖥️ DEVICE INTELLIGENCE
 ═══════════════════════════════════════════════════════════════════
-User Agent: ${deviceIntelligence?.userAgent || 'Unknown'}
-Platform: ${deviceIntelligence?.platform || 'Unknown'}
-Language: ${deviceIntelligence?.language || 'Unknown'}
+Screen Resolution: ${fingerprint?.screen?.width || '?'}x${fingerprint?.screen?.height || '?'}
+Timezone: ${fingerprint?.timezone || 'Unknown'}
+Locale: ${fingerprint?.locale || 'Unknown'}
+Hardware: ${capabilities?.hardwareConcurrency || '?'} cores, ${capabilities?.deviceMemory || '?'} GB RAM
+WebGL Vendor: ${fingerprint?.webGLVendor || 'Unknown'}
+WebGL Renderer: ${fingerprint?.webGLRenderer || 'Unknown'}
+Canvas Fingerprint: ${fingerprint?.canvas ? 'Generated' : 'Not available'}
+Audio Fingerprint: ${fingerprint?.audioFingerprint || 'Not available'}
+Fonts Detected: ${fingerprint?.fonts?.length || 0} fonts
 
 🧠 BEHAVIORAL ANALYTICS
 ═══════════════════════════════════════════════════════════════════
-Total Time: ${Math.round((behavioralAnalytics?.totalTime || 0) / 1000)}s
+Total Form Time: ${Math.round((behavioralAnalytics?.totalTime || 0) / 1000)}s
+Average Time per Question: ${Math.round((behavioralAnalytics?.interactionPattern?.timePerQuestion || 0) / 1000)}s
 Mouse Movements: ${behavioralAnalytics?.mouseMovements?.length || 0}
-Clicks: ${behavioralAnalytics?.clicks?.length || 0}
+Key Presses: ${behavioralAnalytics?.keyPresses?.length || 0}
+Tab Switches: ${behavioralAnalytics?.interactionPattern?.tabSwitchCount || 0}
+Copy Events: ${behavioralAnalytics?.interactionPattern?.copyCount || 0}
+Paste Events: ${behavioralAnalytics?.interactionPattern?.pasteCount || 0}
+Backspaces: ${behavioralAnalytics?.interactionPattern?.backspaces || 0}
 Engagement Score: ${behavioralAnalytics?.interactionPattern?.engagementScore || 0}/100
+Form Completion Rate: ${behavioralAnalytics?.interactionPattern?.formCompletionRate || 0}%
+
+🌐 IP TRACKING HISTORY
+═══════════════════════════════════════════════════════════════════
+${networkMetrics?.ipHistory?.length > 0 ? networkMetrics.ipHistory.map((entry: any) => `${entry.timestamp}: ${entry.ip} (${entry.source})`).join('\n') : 'No IP changes detected'}
 
 ═══════════════════════════════════════════════════════════════════
   `.trim();
