@@ -78,7 +78,7 @@ export class QuantumSecurity {
       // Import key for AES-GCM
       const key = await window.crypto.subtle.importKey(
         'raw',
-        this.encryptionKey,
+        this.encryptionKey.buffer,
         { name: 'AES-GCM' },
         false,
         ['encrypt']
@@ -220,7 +220,7 @@ export class QuantumSecurity {
       // Import key
       const key = await window.crypto.subtle.importKey(
         'raw',
-        this.encryptionKey,
+        this.encryptionKey.buffer,
         { name: 'AES-GCM' },
         false,
         ['decrypt']
