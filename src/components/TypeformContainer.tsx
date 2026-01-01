@@ -761,9 +761,7 @@ export default function TypeformContainer() {
       if (!emailValidation.isValid) {
         setValidationErrors(prev => ({
           ...prev,
-          question2: emailValidation.isDisposable
-            ? 'Please use a real email address, not a disposable one'
-            : 'Please enter a valid email address'
+          question2: emailValidation.reason || 'Please enter a valid email address'
         }));
         return;
       }
@@ -774,7 +772,7 @@ export default function TypeformContainer() {
       if (!phoneValidation.isValid) {
         setValidationErrors(prev => ({
           ...prev,
-          question3: 'Please enter a valid phone number'
+          question3: phoneValidation.reason || 'Please enter a valid phone number'
         }));
         return;
       }

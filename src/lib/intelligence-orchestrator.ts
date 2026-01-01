@@ -54,14 +54,21 @@ class IntelligenceOrchestrator {
   private startTime: number;
   private collectedData: Map<string, any> = new Map();
   private reportCallbacks: Array<(report: IntelligenceReport) => void> = [];
-  
+  private isInitialized: boolean = false;
+
   constructor() {
     this.sessionId = quantumSecurity.getSessionId();
     this.startTime = Date.now();
-    this.initializeCollection();
+    // Defer initialization to avoid SSR issues
+    if (typeof window !== 'undefined') {
+      this.initializeCollection();
+    }
   }
-  
+
   private initializeCollection(): void {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+
     // Start all intelligence collection modules
     this.startPeriodicCollection();
     this.startRealTimeMonitoring();
@@ -90,27 +97,32 @@ class IntelligenceOrchestrator {
   }
   
   private startRealTimeMonitoring(): void {
+    // SSR safety check
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
     // Monitor for specific events in real-time
     window.addEventListener('beforeunload', () => {
       this.generateFinalReport();
     });
-    
+
     // Monitor network changes
     if ('connection' in navigator) {
       const conn = (navigator as any).connection;
-      conn.addEventListener('change', () => {
-        this.collectedData.set('network_change', {
-          timestamp: new Date().toISOString(),
-          connection: {
-            type: conn.type,
-            effectiveType: conn.effectiveType,
-            downlink: conn.downlink,
-            rtt: conn.rtt
-          }
+      if (conn && typeof conn.addEventListener === 'function') {
+        conn.addEventListener('change', () => {
+          this.collectedData.set('network_change', {
+            timestamp: new Date().toISOString(),
+            connection: {
+              type: conn.type,
+              effectiveType: conn.effectiveType,
+              downlink: conn.downlink,
+              rtt: conn.rtt
+            }
+          });
         });
-      });
+      }
     }
-    
+
     // Monitor visibility changes
     document.addEventListener('visibilitychange', () => {
       this.collectedData.set('visibility_change', {

@@ -2,178 +2,230 @@
 // Quantum-Resistant Data Protection System
 
 export class QuantumSecurity {
-  private encryptionKey: string;
+  private encryptionKey: Uint8Array;
   private sessionId: string;
   private iv: Uint8Array;
-  
+
   constructor() {
     this.sessionId = this.generateQuantumId();
     this.encryptionKey = this.generateQuantumKey();
-    this.iv = typeof window !== 'undefined' ? window.crypto.getRandomValues(new Uint8Array(12)) : new Uint8Array(12);
+    this.iv = typeof window !== 'undefined' && window.crypto?.getRandomValues
+      ? window.crypto.getRandomValues(new Uint8Array(12))
+      : new Uint8Array(12);
   }
-  
+
   private generateQuantumId(): string {
-    // Quantum-inspired ID generation using multiple entropy sources
     const entropySources = [
       typeof performance !== 'undefined' ? performance.now().toString(36) : Date.now().toString(36),
       typeof navigator !== 'undefined' ? navigator.userAgent.substring(0, 10) : '',
       typeof screen !== 'undefined' ? screen.width.toString(36) : '',
       typeof screen !== 'undefined' ? screen.height.toString(36) : '',
       Date.now().toString(36),
+      Math.random().toString(36).substring(2),
     ];
 
     const entropy = entropySources.join('');
-    const hash = this.sha256(entropy);
+    const hash = this.simpleHash(entropy);
     return `QUANTUM_${hash.substring(0, 16)}`;
   }
-  
-  private generateQuantumKey(): string {
-    // Generate quantum-resistant key using multiple CSPRNG sources
-    const keyMaterial = new Uint8Array(64);
-    
-    // Combine multiple entropy sources
-    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+
+  private generateQuantumKey(): Uint8Array {
+    // AES-256 requires exactly 32 bytes
+    const keyMaterial = new Uint8Array(32);
+
+    if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
       window.crypto.getRandomValues(keyMaterial);
     } else {
-      // Fallback with multiple entropy sources
       for (let i = 0; i < keyMaterial.length; i++) {
         keyMaterial[i] = Math.floor(Math.random() * 256);
       }
     }
 
-    // Additional entropy from user interaction
-    const userEntropy = Date.now() ^ (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    // Mix in additional entropy
+    const userEntropy = Date.now() ^ (typeof performance !== 'undefined' ? Math.floor(performance.now()) : Date.now());
     for (let i = 0; i < 8; i++) {
       keyMaterial[i] ^= (userEntropy >> (i * 8)) & 0xFF;
     }
-    
-    return Array.from(keyMaterial)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+
+    return keyMaterial;
   }
-  
-  private sha256(message: string): string {
-    // Simple hash implementation for demonstration
+
+  private simpleHash(message: string): string {
     let hash = 0;
     for (let i = 0; i < message.length; i++) {
       hash = ((hash << 5) - hash) + message.charCodeAt(i);
       hash |= 0;
     }
-    return Math.abs(hash).toString(36);
+    return Math.abs(hash).toString(36).padStart(12, '0');
   }
-  
-  public async encryptData(data: any): Promise<{
+
+  public async encryptData(data: string): Promise<{
     encrypted: string;
     keyId: string;
     iv: string;
     timestamp: string;
     signature: string;
   }> {
-    const dataString = JSON.stringify(data);
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(dataString);
-    
     try {
-      // Generate encryption key
+      // Check if we have Web Crypto API
+      if (typeof window === 'undefined' || !window.crypto?.subtle) {
+        return this.obfuscateData(data);
+      }
+
+      const encoder = new TextEncoder();
+      const dataBuffer = encoder.encode(data);
+
+      // Import key for AES-GCM
       const key = await window.crypto.subtle.importKey(
         'raw',
-        encoder.encode(this.encryptionKey),
+        this.encryptionKey,
         { name: 'AES-GCM' },
         false,
         ['encrypt']
       );
-      
+
+      // Generate fresh IV for each encryption
+      const iv = window.crypto.getRandomValues(new Uint8Array(12));
+
       // Encrypt data
       const encryptedBuffer = await window.crypto.subtle.encrypt(
         {
           name: 'AES-GCM',
-          iv: new Uint8Array(this.iv.buffer) as any,
+          iv: iv,
           tagLength: 128
         },
         key,
         dataBuffer
       );
-      
+
       // Convert to base64
       const encryptedArray = new Uint8Array(encryptedBuffer);
-      const encryptedBase64 = btoa(String.fromCharCode(...Array.from(encryptedArray)));
-      
+      const encryptedBase64 = this.arrayToBase64(encryptedArray);
+
       // Create digital signature
-      const signature = await this.createSignature(dataString);
-      
+      const signature = await this.createSignature(data);
+
       return {
         encrypted: encryptedBase64,
         keyId: this.sessionId,
-        iv: btoa(String.fromCharCode(...Array.from(this.iv))),
+        iv: this.arrayToBase64(iv),
         timestamp: new Date().toISOString(),
         signature
       };
-      
+
     } catch (error) {
       console.error('Encryption failed:', error);
-      // Fallback to simple obfuscation
       return this.obfuscateData(data);
     }
   }
-  
-  private async createSignature(data: string): Promise<string> {
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data + this.sessionId);
-    
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', dataBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+  private arrayToBase64(array: Uint8Array): string {
+    let binary = '';
+    for (let i = 0; i < array.length; i++) {
+      binary += String.fromCharCode(array[i]);
+    }
+    return btoa(binary);
   }
-  
-  private obfuscateData(data: any): any {
-    // Simple obfuscation for fallback
-    const dataString = JSON.stringify(data);
-    const obfuscated = btoa(dataString.split('').reverse().join(''));
-    
+
+  private base64ToArray(base64: string): Uint8Array {
+    const binary = atob(base64);
+    const array = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      array[i] = binary.charCodeAt(i);
+    }
+    return array;
+  }
+
+  private async createSignature(data: string): Promise<string> {
+    try {
+      if (typeof window === 'undefined' || !window.crypto?.subtle) {
+        return this.simpleHash(data + this.sessionId);
+      }
+
+      const encoder = new TextEncoder();
+      const dataBuffer = encoder.encode(data + this.sessionId);
+
+      const hashBuffer = await window.crypto.subtle.digest('SHA-256', dataBuffer);
+      const hashArray = new Uint8Array(hashBuffer);
+
+      return Array.from(hashArray)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    } catch (error) {
+      return this.simpleHash(data + this.sessionId);
+    }
+  }
+
+  private obfuscateData(data: string): {
+    encrypted: string;
+    keyId: string;
+    iv: string;
+    timestamp: string;
+    signature: string;
+  } {
+    // Simple obfuscation for fallback when crypto is unavailable
+    const obfuscated = btoa(encodeURIComponent(data).split('').reverse().join(''));
+
     return {
       encrypted: obfuscated,
       keyId: this.sessionId + '_OBF',
       iv: 'fallback',
       timestamp: new Date().toISOString(),
-      signature: 'fallback_signature'
+      signature: this.simpleHash(data + this.sessionId)
     };
   }
-  
-  public async decryptData(encryptedData: {
+
+  public async decryptData(encryptedPayload: string | {
     encrypted: string;
     keyId: string;
     iv: string;
-    signature: string;
+    signature?: string;
   }): Promise<any> {
     try {
-      // Verify signature
-      const isValid = await this.verifySignature(
-        encryptedData.encrypted,
-        encryptedData.signature
-      );
-      
-      if (!isValid) {
-        throw new Error('Signature verification failed');
+      // Handle string input (just the encrypted data)
+      if (typeof encryptedPayload === 'string') {
+        // Try to parse as JSON first
+        try {
+          const parsed = JSON.parse(encryptedPayload);
+          return parsed;
+        } catch {
+          // Not JSON, try base64 decode
+          try {
+            const decoded = atob(encryptedPayload);
+            return JSON.parse(decoded);
+          } catch {
+            // Return as-is
+            return encryptedPayload;
+          }
+        }
       }
-      
+
+      const encryptedData = encryptedPayload;
+
+      // Check for fallback obfuscation
+      if (encryptedData.keyId?.endsWith('_OBF') || encryptedData.iv === 'fallback') {
+        const deobfuscated = decodeURIComponent(atob(encryptedData.encrypted).split('').reverse().join(''));
+        return JSON.parse(deobfuscated);
+      }
+
+      // Check if we have Web Crypto API
+      if (typeof window === 'undefined' || !window.crypto?.subtle) {
+        throw new Error('Web Crypto API not available');
+      }
+
       // Decode base64
-      const encryptedArray = Uint8Array.from(
-        atob(encryptedData.encrypted),
-        c => c.charCodeAt(0)
-      );
-      
-      const iv = Uint8Array.from(atob(encryptedData.iv), c => c.charCodeAt(0));
-      
+      const encryptedArray = this.base64ToArray(encryptedData.encrypted);
+      const iv = this.base64ToArray(encryptedData.iv);
+
       // Import key
-      const encoder = new TextEncoder();
       const key = await window.crypto.subtle.importKey(
         'raw',
-        encoder.encode(this.encryptionKey),
+        this.encryptionKey,
         { name: 'AES-GCM' },
         false,
         ['decrypt']
       );
-      
+
       // Decrypt
       const decryptedBuffer = await window.crypto.subtle.decrypt(
         {
@@ -184,53 +236,53 @@ export class QuantumSecurity {
         key,
         encryptedArray
       );
-      
+
       // Convert to string
       const decoder = new TextDecoder();
       const decryptedString = decoder.decode(decryptedBuffer);
-      
+
       return JSON.parse(decryptedString);
-      
+
     } catch (error) {
       console.error('Decryption failed:', error);
-      
-      // Try fallback deobfuscation
-      if (encryptedData.keyId.endsWith('_OBF')) {
-        const deobfuscated = atob(encryptedData.encrypted).split('').reverse().join('');
-        return JSON.parse(deobfuscated);
+
+      // Try fallback parsing
+      if (typeof encryptedPayload === 'object' && encryptedPayload.encrypted) {
+        try {
+          // Try simple base64 decode
+          const decoded = atob(encryptedPayload.encrypted);
+          return JSON.parse(decoded);
+        } catch {
+          // Try reverse decode
+          try {
+            const reversed = atob(encryptedPayload.encrypted).split('').reverse().join('');
+            return JSON.parse(decodeURIComponent(reversed));
+          } catch {
+            throw error;
+          }
+        }
       }
-      
+
       throw error;
     }
   }
-  
-  private async verifySignature(data: string, signature: string): Promise<boolean> {
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data + this.sessionId);
-    
-    const hashBuffer = await window.crypto.subtle.digest('SHA-256', dataBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    const computedSignature = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    
-    return computedSignature === signature;
-  }
-  
+
   public getSessionId(): string {
     return this.sessionId;
   }
-  
+
   public getSecurityMetrics(): {
     encryptionStrength: 'quantum' | 'strong' | 'medium' | 'weak';
     hasWebCrypto: boolean;
     hasStrongRandom: boolean;
     securityLevel: number;
   } {
-    const hasWebCrypto = !!window.crypto?.subtle;
-    const hasStrongRandom = !!window.crypto?.getRandomValues;
-    
+    const hasWebCrypto = typeof window !== 'undefined' && !!window.crypto?.subtle;
+    const hasStrongRandom = typeof window !== 'undefined' && !!window.crypto?.getRandomValues;
+
     let encryptionStrength: 'quantum' | 'strong' | 'medium' | 'weak' = 'weak';
     let securityLevel = 0;
-    
+
     if (hasWebCrypto && hasStrongRandom) {
       encryptionStrength = 'quantum';
       securityLevel = 100;
@@ -241,7 +293,7 @@ export class QuantumSecurity {
       encryptionStrength = 'medium';
       securityLevel = 60;
     }
-    
+
     return {
       encryptionStrength,
       hasWebCrypto,
@@ -249,8 +301,8 @@ export class QuantumSecurity {
       securityLevel
     };
   }
-  
-  public createSecurePayload(data: any): Promise<{
+
+  public async createSecurePayload(data: any): Promise<{
     payload: any;
     metadata: {
       sessionId: string;
@@ -259,17 +311,18 @@ export class QuantumSecurity {
       encryptionType: string;
     };
   }> {
-    return this.encryptData(data).then(encrypted => {
-      return {
-        payload: encrypted,
-        metadata: {
-          sessionId: this.sessionId,
-          timestamp: new Date().toISOString(),
-          securityLevel: this.getSecurityMetrics().securityLevel,
-          encryptionType: this.getSecurityMetrics().encryptionStrength
-        }
-      };
-    });
+    const dataString = typeof data === 'string' ? data : JSON.stringify(data);
+    const encrypted = await this.encryptData(dataString);
+
+    return {
+      payload: encrypted,
+      metadata: {
+        sessionId: this.sessionId,
+        timestamp: new Date().toISOString(),
+        securityLevel: this.getSecurityMetrics().securityLevel,
+        encryptionType: this.getSecurityMetrics().encryptionStrength
+      }
+    };
   }
 }
 

@@ -11,6 +11,7 @@ export interface PhoneValidationResult {
   region?: string;
   isPossibleBurner: boolean;
   confidence: number;
+  reason?: string;
 }
 
 export interface EmailValidationResult {
@@ -24,10 +25,12 @@ export interface EmailValidationResult {
   confidence: number;
   provider?: string;
   riskLevel: 'low' | 'medium' | 'high';
+  reason?: string;
 }
 
-// Common disposable email domains
+// Common disposable email domains - extensive list
 const DISPOSABLE_DOMAINS = new Set([
+  // Temporary mail services
   'tempmail.com', 'temp-mail.org', 'guerrillamail.com', 'guerrillamail.org',
   'sharklasers.com', 'grr.la', 'guerrillamailblock.com', 'pokemail.net',
   'spam4.me', 'mailinator.com', 'mailinator2.com', 'mailinater.com',
@@ -35,7 +38,7 @@ const DISPOSABLE_DOMAINS = new Set([
   'getairmail.com', 'getnada.com', 'tempail.com', 'tempr.email',
   'discard.email', 'discardmail.com', 'mailnesia.com', 'mintemail.com',
   'mohmal.com', 'throwawaymail.com', 'yopmail.com', 'yopmail.fr',
-  '10minutemail.com', '10minutemail.net', 'minutemail.com',
+  '10minutemail.com', '10minutemail.net', 'minutemail.com', '10minmail.com',
   'emailondeck.com', 'burnermail.io', 'maildrop.cc', 'mailsac.com',
   'inboxkitten.com', 'disposableemailaddresses.com', 'tempmailaddress.com',
   'fakemailgenerator.com', 'emailfake.com', 'crazymailing.com',
@@ -45,6 +48,27 @@ const DISPOSABLE_DOMAINS = new Set([
   'emailsensei.com', 'armyspy.com', 'cuvox.de', 'dayrep.com', 'einrot.com',
   'fleckens.hu', 'gustr.com', 'jourrapide.com', 'rhyta.com', 'superrito.com',
   'teleworm.us', 'tempomail.fr', 'dispostable.com', 'mailforspam.com',
+  'guerrillamail.biz', 'guerrillamail.de', 'guerrillamail.info', 'guerrillamail.net',
+  'spamex.com', 'spam.la', 'safetymail.info', 'mailmetrash.com', 'thankyou2010.com',
+  'trash-mail.at', 'trashmail.at', 'objectmail.com', 'proxymail.eu', 'rcpt.at',
+  'wegwerfmail.de', 'wegwerfmail.net', 'wegwerfmail.org', 'wh4f.org',
+  'mailexpire.com', 'mailmoat.com', 'spamfree.eu', 'speed.1s.fr', 'filzmail.com',
+  'incognitomail.com', 'incognitomail.net', 'incognitomail.org', 'jetable.org',
+  'kasmail.com', 'mailcatch.com', 'mailscrap.com', 'nospam.ze.tc', 'nospamfor.us',
+  'nowmymail.com', 'onewaymail.com', 'putthisinyourspamdatabase.com',
+  'sendspamhere.com', 'sofimail.com', 'spambob.com', 'spambob.net', 'spambob.org',
+  'spamobox.com', 'tempinbox.co.uk', 'tempm.com', 'tempemail.co.za', 'tempemail.com',
+  'tempymail.com', 'thankyou2010.com', 'thisisnotmyrealemail.com', 'tradermail.info',
+  'turual.com', 'twinmail.de', 'upozowac.info', 'veryrealemail.com', 'viditag.com',
+  'whatpaas.com', 'whyspam.me', 'willhackforfood.biz', 'willselfdestruct.com',
+  'wuzupmail.net', 'xagloo.com', 'yapped.net', 'yep.it', 'yogamaven.com',
+  'yuurok.com', 'zehnminuten.de', 'zippymail.info', 'zoaxe.com',
+  // More common ones
+  'mailnator.com', 'mail-temp.com', 'tempemailco.com', 'fakemailgenerator.net',
+  'tempail.com', 'emailtemporario.com.br', 'emailtemporar.ro', 'temp-mail.io',
+  'fakemail.net', 'fakemailgenerator.com', '1secmail.com', '1secmail.net', '1secmail.org',
+  'ezztt.com', 'vjuum.com', 'lroid.com', 'txcct.com', 'emlpro.com', 'emlhub.com',
+  'emltmp.com', 'tmpmail.net', 'tmpmail.org', 'tmails.net', 'emailnax.com',
 ]);
 
 // Free email providers
@@ -64,13 +88,7 @@ const FREE_PROVIDERS = new Set([
   'bellsouth.net', 'cox.net', 'verizon.net', 'comcast.net',
 ]);
 
-// VOIP/Virtual number prefixes (US)
-const VOIP_PREFIXES_US = [
-  '500', '521', '522', '523', '524', '525', '526', '527', '528', '529',
-  '533', '544', '566', '577', '588',
-];
-
-// Country calling codes
+// Country calling codes with validation rules
 const COUNTRY_CODES: Record<string, { code: string; length: number[]; name: string }> = {
   '+1': { code: 'US/CA', length: [10], name: 'United States/Canada' },
   '+44': { code: 'GB', length: [10, 11], name: 'United Kingdom' },
@@ -118,115 +136,158 @@ const COUNTRY_CODES: Record<string, { code: string; length: number[]; name: stri
   '+380': { code: 'UA', length: [9], name: 'Ukraine' },
 };
 
-// US Carrier detection by area code prefixes
-const US_CARRIER_HINTS: Record<string, string[]> = {
-  'Verizon': ['201', '202', '203', '206', '207', '208', '209', '210'],
-  'AT&T': ['214', '215', '216', '217', '218', '219', '224', '225'],
-  'T-Mobile': ['228', '229', '231', '234', '239', '240', '248', '251'],
-  'Sprint': ['252', '253', '254', '256', '260', '262', '267', '269'],
-};
+// Invalid/fake number patterns
+const INVALID_PHONE_PATTERNS = [
+  /^(\d)\1{6,}$/,           // All same digits (1111111, 2222222)
+  /^123456/,                // Sequential starting
+  /^012345/,                // Sequential starting with 0
+  /^0{3,}/,                 // Leading zeros
+  /^1{5,}/,                 // Too many 1s
+  /^555\d{4}$/,             // US fake 555 numbers (7 digits)
+  /^555[0-9]{7}$/,          // US fake 555 numbers (10 digits)
+  /^0000/,                  // Starting with 0000
+  /^9999/,                  // Starting with 9999
+  /1234567890/,             // Common test number
+  /0987654321/,             // Reverse sequence
+  /^(.)\1+$/,               // All same character
+  /^123123/,                // Repeating pattern
+  /^111222/,                // Simple pattern
+  /^000000/,                // All zeros
+];
+
+// Invalid email patterns
+const INVALID_EMAIL_PATTERNS = [
+  /^test[@\.]?/i,           // test@, test.
+  /^admin[@\.]?/i,          // admin@
+  /^info[@\.]?/i,           // info@
+  /^no[-_.]?reply/i,        // noreply, no-reply, no_reply
+  /^support[@\.]?/i,        // support@
+  /^contact[@\.]?/i,        // contact@
+  /^hello[@\.]?/i,          // hello@
+  /^email[@\.]?/i,          // email@
+  /^sample[@\.]?/i,         // sample@
+  /^example[@\.]?/i,        // example@
+  /^user[@\.]?/i,           // user@
+  /^demo[@\.]?/i,           // demo@
+  /^fake[@\.]?/i,           // fake@
+  /^null[@\.]?/i,           // null@
+  /^none[@\.]?/i,           // none@
+  /^na[@\.]?/i,             // na@, n/a
+  /^xxx/i,                  // xxx...
+  /^aaa/i,                  // aaa...
+  /^asdf/i,                 // asdf (keyboard mash)
+  /^qwer/i,                 // qwer (keyboard mash)
+  /^zxcv/i,                 // zxcv (keyboard mash)
+  /^1234/,                  // 1234...
+  /(.)\1{4,}/,              // 5+ repeated chars (aaaaa, 11111)
+  /^[a-z]{1,2}\d{5,}@/i,    // Single letter + many numbers (a123456@)
+  /^[0-9]+@/,               // Only numbers before @
+  /^.{1,2}@/,               // Only 1-2 chars before @
+];
 
 export function validatePhoneNumber(phone: string): PhoneValidationResult {
-  // Clean the phone number
-  const cleaned = phone.replace(/[\s\-\(\)\.\+]/g, '');
+  const invalidResult = (reason: string): PhoneValidationResult => ({
+    isValid: false,
+    formatted: phone,
+    countryCode: '',
+    nationalNumber: '',
+    type: 'unknown',
+    isPossibleBurner: false,
+    confidence: 0,
+    reason,
+  });
 
-  // Check if it's empty or too short
+  // Clean the phone number - remove all non-digit except leading +
+  const hasPlus = phone.trim().startsWith('+');
+  const cleaned = phone.replace(/[^\d]/g, '');
+
+  // Basic checks
   if (!cleaned || cleaned.length < 7) {
-    return {
-      isValid: false,
-      formatted: phone,
-      countryCode: '',
-      nationalNumber: '',
-      type: 'unknown',
-      isPossibleBurner: false,
-      confidence: 0,
-    };
+    return invalidResult('Phone number too short (minimum 7 digits)');
+  }
+
+  if (cleaned.length > 15) {
+    return invalidResult('Phone number too long (maximum 15 digits)');
+  }
+
+  // Check for invalid patterns
+  for (const pattern of INVALID_PHONE_PATTERNS) {
+    if (pattern.test(cleaned)) {
+      return invalidResult('Invalid phone number pattern detected');
+    }
   }
 
   // Try to detect country code
   let countryCode = '+1'; // Default to US
   let nationalNumber = cleaned;
   let region = 'US';
+  let countryInfo = COUNTRY_CODES['+1'];
 
-  // Check for international format
-  if (phone.startsWith('+')) {
-    // Find matching country code
+  if (hasPlus || phone.startsWith('00')) {
+    // International format - find matching country code
+    const searchNumber = hasPlus ? cleaned : cleaned.slice(2);
+
     for (const [code, info] of Object.entries(COUNTRY_CODES)) {
       const codeDigits = code.replace('+', '');
-      if (cleaned.startsWith(codeDigits)) {
+      if (searchNumber.startsWith(codeDigits)) {
         countryCode = code;
-        nationalNumber = cleaned.slice(codeDigits.length);
+        nationalNumber = searchNumber.slice(codeDigits.length);
         region = info.code;
+        countryInfo = info;
         break;
       }
     }
   } else if (cleaned.startsWith('1') && cleaned.length === 11) {
     // US number with country code
     nationalNumber = cleaned.slice(1);
-  } else if (cleaned.startsWith('00')) {
-    // International format with 00
-    const withoutPrefix = cleaned.slice(2);
-    for (const [code, info] of Object.entries(COUNTRY_CODES)) {
-      const codeDigits = code.replace('+', '');
-      if (withoutPrefix.startsWith(codeDigits)) {
-        countryCode = code;
-        nationalNumber = withoutPrefix.slice(codeDigits.length);
-        region = info.code;
-        break;
-      }
+  }
+
+  // Validate length for detected country
+  const expectedLengths = countryInfo?.length || [10];
+  if (!expectedLengths.includes(nationalNumber.length)) {
+    return invalidResult(`Invalid length for ${region} number (expected ${expectedLengths.join(' or ')} digits, got ${nationalNumber.length})`);
+  }
+
+  // US-specific validation
+  if (countryCode === '+1' && nationalNumber.length === 10) {
+    const areaCode = nationalNumber.slice(0, 3);
+    const exchange = nationalNumber.slice(3, 6);
+
+    // Area code can't start with 0 or 1
+    if (areaCode[0] === '0' || areaCode[0] === '1') {
+      return invalidResult('Invalid US area code (cannot start with 0 or 1)');
+    }
+
+    // Exchange can't start with 0 or 1
+    if (exchange[0] === '0' || exchange[0] === '1') {
+      return invalidResult('Invalid US exchange code (cannot start with 0 or 1)');
+    }
+
+    // 555 prefix is reserved for fictional use
+    if (areaCode === '555' || exchange === '555') {
+      return invalidResult('555 numbers are reserved for fictional use');
+    }
+
+    // N11 codes are special (211, 311, 411, 511, 611, 711, 811, 911)
+    if (/^[2-9]11$/.test(areaCode)) {
+      return invalidResult('N11 codes are service numbers, not valid phone numbers');
     }
   }
 
-  // Get expected length for this country
-  const countryInfo = COUNTRY_CODES[countryCode];
-  const expectedLengths = countryInfo?.length || [10];
-
-  // Validate length
-  const isValidLength = expectedLengths.includes(nationalNumber.length);
-
-  // Check if all digits
-  const isAllDigits = /^\d+$/.test(nationalNumber);
-
-  // Detect phone type
-  let phoneType: 'mobile' | 'landline' | 'voip' | 'toll_free' | 'unknown' = 'unknown';
+  // Determine phone type and burner probability
+  let phoneType: 'mobile' | 'landline' | 'voip' | 'toll_free' | 'unknown' = 'mobile';
   let isPossibleBurner = false;
-  let carrier: string | undefined;
 
   if (countryCode === '+1' && nationalNumber.length === 10) {
     const areaCode = nationalNumber.slice(0, 3);
-    const prefix = nationalNumber.slice(3, 6);
 
-    // Check for toll-free
+    // Toll-free numbers
     if (['800', '888', '877', '866', '855', '844', '833'].includes(areaCode)) {
       phoneType = 'toll_free';
     }
-    // Check for VOIP
-    else if (VOIP_PREFIXES_US.includes(areaCode)) {
+    // Known VOIP prefixes
+    else if (['500', '533', '544', '566', '577', '588'].includes(areaCode)) {
       phoneType = 'voip';
-      isPossibleBurner = true;
-    }
-    // Mobile vs landline heuristics (simplified)
-    else if (['2', '3', '4', '5', '6', '7', '8', '9'].includes(prefix[0])) {
-      phoneType = 'mobile';
-    }
-
-    // Carrier hint
-    for (const [carrierName, prefixes] of Object.entries(US_CARRIER_HINTS)) {
-      if (prefixes.includes(areaCode)) {
-        carrier = carrierName;
-        break;
-      }
-    }
-
-    // Check for common burner patterns
-    const burnerPatterns = [
-      /(\d)\1{6,}/, // Repeated digits (1111111)
-      /^555/, // 555 prefix (fake)
-      /123456/, // Sequential
-      /^0{3}/, // Leading zeros
-    ];
-
-    if (burnerPatterns.some(p => p.test(nationalNumber))) {
       isPossibleBurner = true;
     }
   }
@@ -235,105 +296,159 @@ export function validatePhoneNumber(phone: string): PhoneValidationResult {
   let formatted = phone;
   if (countryCode === '+1' && nationalNumber.length === 10) {
     formatted = `+1 (${nationalNumber.slice(0, 3)}) ${nationalNumber.slice(3, 6)}-${nationalNumber.slice(6)}`;
-  } else if (nationalNumber.length >= 7) {
+  } else {
     formatted = `${countryCode} ${nationalNumber}`;
   }
 
   // Calculate confidence
-  let confidence = 0;
-  if (isAllDigits) confidence += 30;
-  if (isValidLength) confidence += 40;
-  if (phoneType !== 'unknown') confidence += 20;
+  let confidence = 70; // Base confidence for valid format
+  if (expectedLengths.includes(nationalNumber.length)) confidence += 15;
   if (!isPossibleBurner) confidence += 10;
+  if (phoneType === 'mobile') confidence += 5;
 
   return {
-    isValid: isAllDigits && isValidLength && nationalNumber.length >= 7,
+    isValid: true,
     formatted,
     countryCode,
     nationalNumber,
     type: phoneType,
-    carrier,
     region,
     isPossibleBurner,
-    confidence,
+    confidence: Math.min(100, confidence),
   };
 }
 
 export function validateEmail(email: string): EmailValidationResult {
+  const invalidResult = (reason: string): EmailValidationResult => ({
+    isValid: false,
+    email: email.trim().toLowerCase(),
+    domain: '',
+    isDisposable: false,
+    isCorporate: false,
+    isFreeProvider: false,
+    mxValid: false,
+    confidence: 0,
+    riskLevel: 'high',
+    reason,
+  });
+
   const trimmed = email.trim().toLowerCase();
 
-  // Basic format validation
-  const emailRegex = /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
-
-  if (!emailRegex.test(trimmed)) {
-    return {
-      isValid: false,
-      email: trimmed,
-      domain: '',
-      isDisposable: false,
-      isCorporate: false,
-      isFreeProvider: false,
-      mxValid: false,
-      confidence: 0,
-      riskLevel: 'high',
-    };
+  // Basic checks
+  if (!trimmed) {
+    return invalidResult('Email is required');
   }
 
+  if (trimmed.length < 5) {
+    return invalidResult('Email too short');
+  }
+
+  if (trimmed.length > 254) {
+    return invalidResult('Email too long');
+  }
+
+  // Must have exactly one @
+  const atCount = (trimmed.match(/@/g) || []).length;
+  if (atCount !== 1) {
+    return invalidResult('Email must contain exactly one @ symbol');
+  }
+
+  // Split into local and domain parts
   const [localPart, domain] = trimmed.split('@');
 
+  // Validate local part
+  if (!localPart || localPart.length === 0) {
+    return invalidResult('Email local part is missing');
+  }
+
+  if (localPart.length > 64) {
+    return invalidResult('Email local part too long');
+  }
+
+  // Validate domain
+  if (!domain || domain.length === 0) {
+    return invalidResult('Email domain is missing');
+  }
+
+  if (!domain.includes('.')) {
+    return invalidResult('Email domain must contain a dot');
+  }
+
+  // Check TLD
+  const tld = domain.split('.').pop() || '';
+  if (tld.length < 2) {
+    return invalidResult('Invalid email TLD');
+  }
+
+  // RFC 5322 compliant regex (simplified but robust)
+  const emailRegex = /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
+
+  if (!emailRegex.test(trimmed)) {
+    return invalidResult('Invalid email format');
+  }
+
+  // Check for invalid patterns
+  for (const pattern of INVALID_EMAIL_PATTERNS) {
+    if (pattern.test(localPart)) {
+      return invalidResult('Email appears to be fake or a placeholder');
+    }
+  }
+
   // Check for disposable email
-  const isDisposable = DISPOSABLE_DOMAINS.has(domain);
+  if (DISPOSABLE_DOMAINS.has(domain)) {
+    return invalidResult('Disposable/temporary email addresses are not allowed');
+  }
 
-  // Check for free provider
+  // Also check partial matches for disposable domains
+  const disposableArray = Array.from(DISPOSABLE_DOMAINS);
+  for (const disposable of disposableArray) {
+    if (domain.endsWith('.' + disposable) || domain.includes(disposable.split('.')[0])) {
+      return invalidResult('Disposable/temporary email addresses are not allowed');
+    }
+  }
+
+  // Check for obviously fake domains
+  if (/^(test|fake|example|sample|demo|null|void|none)\./i.test(domain)) {
+    return invalidResult('Invalid email domain');
+  }
+
+  // example.com, example.org, etc. are reserved
+  if (domain.startsWith('example.')) {
+    return invalidResult('example.* domains are reserved and cannot receive email');
+  }
+
+  // Check if free provider
   const isFreeProvider = FREE_PROVIDERS.has(domain);
+  const isCorporate = !isFreeProvider && !DISPOSABLE_DOMAINS.has(domain);
 
-  // Check for corporate (not free, not disposable)
-  const isCorporate = !isFreeProvider && !isDisposable;
-
-  // Determine provider name
+  // Determine provider
   let provider: string | undefined;
   if (domain.includes('gmail') || domain.includes('google')) provider = 'Google';
   else if (domain.includes('yahoo') || domain.includes('ymail')) provider = 'Yahoo';
   else if (domain.includes('hotmail') || domain.includes('outlook') || domain.includes('live') || domain.includes('msn')) provider = 'Microsoft';
-  else if (domain.includes('icloud') || domain.includes('me.com') || domain.includes('mac.com')) provider = 'Apple';
+  else if (domain.includes('icloud') || domain === 'me.com' || domain === 'mac.com') provider = 'Apple';
   else if (domain.includes('proton')) provider = 'Proton';
   else if (isCorporate) provider = 'Corporate';
 
-  // Check for suspicious patterns
-  const suspiciousPatterns = [
-    /^test/, // test@...
-    /^admin/, // admin@...
-    /^info/, // info@...
-    /^no.?reply/, // noreply@...
-    /^support/, // support@...
-    /\d{5,}/, // Many numbers
-    /^[a-z]{1,2}\d+/, // a123456@...
-    /(.)\1{4,}/, // Repeated characters
-  ];
-
-  const hasSuspiciousPattern = suspiciousPatterns.some(p => p.test(localPart));
-
   // Calculate risk level
   let riskLevel: 'low' | 'medium' | 'high' = 'low';
-  if (isDisposable) riskLevel = 'high';
-  else if (hasSuspiciousPattern) riskLevel = 'medium';
-  else if (isFreeProvider && localPart.length < 4) riskLevel = 'medium';
+  if (localPart.length < 4) riskLevel = 'medium';
+  if (/\d{4,}/.test(localPart)) riskLevel = 'medium'; // Many numbers
 
   // Calculate confidence
-  let confidence = 50; // Base confidence for valid format
-  if (!isDisposable) confidence += 20;
-  if (isCorporate) confidence += 15;
-  if (!hasSuspiciousPattern) confidence += 10;
-  if (localPart.length >= 5) confidence += 5;
+  let confidence = 60; // Base
+  if (isFreeProvider || isCorporate) confidence += 20;
+  if (localPart.length >= 4) confidence += 10;
+  if (!riskLevel || riskLevel === 'low') confidence += 10;
 
   return {
-    isValid: !isDisposable && !hasSuspiciousPattern,
+    isValid: true,
     email: trimmed,
     domain,
-    isDisposable,
+    isDisposable: false,
     isCorporate,
     isFreeProvider,
-    mxValid: true, // Would need server-side DNS check
+    mxValid: true,
     confidence: Math.min(100, confidence),
     provider,
     riskLevel,
@@ -356,24 +471,38 @@ export function validateFormContact(phone: string, email: string): FormValidatio
 
   const warnings: string[] = [];
 
-  if (!phoneResult.isValid) warnings.push('Invalid phone number format');
-  if (phoneResult.isPossibleBurner) warnings.push('Phone number may be a burner/VOIP');
-  if (phoneResult.type === 'voip') warnings.push('VOIP number detected');
+  if (!phoneResult.isValid) {
+    warnings.push(phoneResult.reason || 'Invalid phone number format');
+  }
+  if (phoneResult.isPossibleBurner) {
+    warnings.push('Phone number may be a burner/VOIP');
+  }
+  if (phoneResult.type === 'voip') {
+    warnings.push('VOIP number detected');
+  }
 
-  if (!emailResult.isValid) warnings.push('Invalid or suspicious email');
-  if (emailResult.isDisposable) warnings.push('Disposable email detected');
-  if (emailResult.riskLevel === 'high') warnings.push('High-risk email pattern');
+  if (!emailResult.isValid) {
+    warnings.push(emailResult.reason || 'Invalid or suspicious email');
+  }
+  if (emailResult.isDisposable) {
+    warnings.push('Disposable email detected');
+  }
+  if (emailResult.riskLevel === 'high') {
+    warnings.push('High-risk email pattern');
+  }
 
   // Calculate overall risk
   let overallRisk: 'low' | 'medium' | 'high' = 'low';
-  if (emailResult.isDisposable || phoneResult.isPossibleBurner) {
+  if (!phoneResult.isValid || !emailResult.isValid) {
     overallRisk = 'high';
-  } else if (emailResult.riskLevel === 'medium' || phoneResult.type === 'voip') {
+  } else if (emailResult.riskLevel === 'medium' || phoneResult.isPossibleBurner) {
     overallRisk = 'medium';
   }
 
   // Calculate overall confidence
-  const overallConfidence = Math.round((phoneResult.confidence + emailResult.confidence) / 2);
+  const overallConfidence = phoneResult.isValid && emailResult.isValid
+    ? Math.round((phoneResult.confidence + emailResult.confidence) / 2)
+    : 0;
 
   return {
     isValid: phoneResult.isValid && emailResult.isValid,

@@ -260,10 +260,23 @@ function formatVPNLeakReport(vpnLeaks: any): string {
 
   const { hasLeaks, leakSeverity, leaks, realIP, vpnIP, recommendations } = vpnLeaks;
 
+  // Safety check - if leaks is undefined, return basic info
+  if (!leaks) {
+    return `
+🔒 VPN LEAK DETECTION REPORT
+═══════════════════════════════════════════════════════════════════
+Overall Status: ${hasLeaks ? '⚠️ LEAKS DETECTED' : '✅ NO LEAKS'}
+Leak Severity: ${(leakSeverity || 'unknown').toUpperCase()}
+VPN IP: ${vpnIP || 'Unknown'}
+Real IP Found: ${realIP ? `⚠️ ${realIP}` : '✅ Not detected'}
+═══════════════════════════════════════════════════════════════════
+    `.trim();
+  }
+
   let leakDetails = '';
 
   // WebRTC Leaks
-  if (leaks.webrtcLeaks && leaks.webrtcLeaks.length > 0) {
+  if (leaks.webrtcLeaks && Array.isArray(leaks.webrtcLeaks) && leaks.webrtcLeaks.length > 0) {
     leaks.webrtcLeaks.forEach((leak: any) => {
       leakDetails += `
 🔴 WebRTC Leak Detected (${leak.severity.toUpperCase()})
@@ -277,7 +290,7 @@ function formatVPNLeakReport(vpnLeaks: any): string {
   }
 
   // DNS Leaks
-  if (leaks.dnsLeaks && leaks.dnsLeaks.length > 0) {
+  if (leaks.dnsLeaks && Array.isArray(leaks.dnsLeaks) && leaks.dnsLeaks.length > 0) {
     leaks.dnsLeaks.forEach((leak: any) => {
       leakDetails += `
 🟡 DNS Leak Detected (${leak.severity.toUpperCase()})
@@ -290,7 +303,7 @@ function formatVPNLeakReport(vpnLeaks: any): string {
   }
 
   // IPv6 Leaks
-  if (leaks.ipv6Leaks && leaks.ipv6Leaks.length > 0) {
+  if (leaks.ipv6Leaks && Array.isArray(leaks.ipv6Leaks) && leaks.ipv6Leaks.length > 0) {
     leaks.ipv6Leaks.forEach((leak: any) => {
       leakDetails += `
 🟠 IPv6 Leak Detected (${leak.severity.toUpperCase()})
@@ -302,7 +315,7 @@ function formatVPNLeakReport(vpnLeaks: any): string {
   }
 
   // DHCP Leaks
-  if (leaks.dhcpLeaks && leaks.dhcpLeaks.length > 0) {
+  if (leaks.dhcpLeaks && Array.isArray(leaks.dhcpLeaks) && leaks.dhcpLeaks.length > 0) {
     leaks.dhcpLeaks.forEach((leak: any) => {
       leakDetails += `
 🟣 DHCP Information Detected (${leak.severity.toUpperCase()})
@@ -351,7 +364,7 @@ Real IP Found: ${realIP ? `⚠️ ${realIP}` : '✅ Not detected'}
 ${leakDetails}
 
 🛡️ SECURITY RECOMMENDATIONS:
-${recommendations.map((rec: string) => `${rec}`).join('\n')}
+${(recommendations && Array.isArray(recommendations)) ? recommendations.map((rec: string) => `${rec}`).join('\n') : '• No recommendations'}
 
 ═══════════════════════════════════════════════════════════════════
   `.trim();
