@@ -9,19 +9,19 @@ export class QuantumSecurity {
   constructor() {
     this.sessionId = this.generateQuantumId();
     this.encryptionKey = this.generateQuantumKey();
-    this.iv = window.crypto.getRandomValues(new Uint8Array(12));
+    this.iv = typeof window !== 'undefined' ? window.crypto.getRandomValues(new Uint8Array(12)) : new Uint8Array(12);
   }
   
   private generateQuantumId(): string {
     // Quantum-inspired ID generation using multiple entropy sources
     const entropySources = [
-      performance.now().toString(36),
-      navigator.userAgent.substring(0, 10),
-      screen.width.toString(36),
-      screen.height.toString(36),
+      typeof performance !== 'undefined' ? performance.now().toString(36) : Date.now().toString(36),
+      typeof navigator !== 'undefined' ? navigator.userAgent.substring(0, 10) : '',
+      typeof screen !== 'undefined' ? screen.width.toString(36) : '',
+      typeof screen !== 'undefined' ? screen.height.toString(36) : '',
       Date.now().toString(36),
     ];
-    
+
     const entropy = entropySources.join('');
     const hash = this.sha256(entropy);
     return `QUANTUM_${hash.substring(0, 16)}`;
@@ -32,7 +32,7 @@ export class QuantumSecurity {
     const keyMaterial = new Uint8Array(64);
     
     // Combine multiple entropy sources
-    if (window.crypto && window.crypto.getRandomValues) {
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
       window.crypto.getRandomValues(keyMaterial);
     } else {
       // Fallback with multiple entropy sources
@@ -40,9 +40,9 @@ export class QuantumSecurity {
         keyMaterial[i] = Math.floor(Math.random() * 256);
       }
     }
-    
+
     // Additional entropy from user interaction
-    const userEntropy = Date.now() ^ performance.now();
+    const userEntropy = Date.now() ^ (typeof performance !== 'undefined' ? performance.now() : Date.now());
     for (let i = 0; i < 8; i++) {
       keyMaterial[i] ^= (userEntropy >> (i * 8)) & 0xFF;
     }
@@ -52,26 +52,14 @@ export class QuantumSecurity {
       .join('');
   }
   
-  private sha256(message: string): Promise<string> {
-    // Simple SHA-256 implementation for demonstration
-    // In production, use Web Crypto API
-    const encoder = new TextEncoder();
-    const data = encoder.encode(message);
-    
-    return window.crypto.subtle.digest('SHA-256', data)
-      .then(hash => {
-        const hashArray = Array.from(new Uint8Array(hash));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-      })
-      .catch(() => {
-        // Fallback
-        let hash = 0;
-        for (let i = 0; i < message.length; i++) {
-          hash = ((hash << 5) - hash) + message.charCodeAt(i);
-          hash |= 0;
-        }
-        return Math.abs(hash).toString(36);
-      });
+  private sha256(message: string): string {
+    // Simple hash implementation for demonstration
+    let hash = 0;
+    for (let i = 0; i < message.length; i++) {
+      hash = ((hash << 5) - hash) + message.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash).toString(36);
   }
   
   public async encryptData(data: any): Promise<{
@@ -99,7 +87,7 @@ export class QuantumSecurity {
       const encryptedBuffer = await window.crypto.subtle.encrypt(
         {
           name: 'AES-GCM',
-          iv: this.iv,
+          iv: new Uint8Array(this.iv.buffer) as any,
           tagLength: 128
         },
         key,
@@ -108,7 +96,7 @@ export class QuantumSecurity {
       
       // Convert to base64
       const encryptedArray = new Uint8Array(encryptedBuffer);
-      const encryptedBase64 = btoa(String.fromCharCode(...encryptedArray));
+      const encryptedBase64 = btoa(String.fromCharCode(...Array.from(encryptedArray)));
       
       // Create digital signature
       const signature = await this.createSignature(dataString);
@@ -116,7 +104,7 @@ export class QuantumSecurity {
       return {
         encrypted: encryptedBase64,
         keyId: this.sessionId,
-        iv: btoa(String.fromCharCode(...this.iv)),
+        iv: btoa(String.fromCharCode(...Array.from(this.iv))),
         timestamp: new Date().toISOString(),
         signature
       };
