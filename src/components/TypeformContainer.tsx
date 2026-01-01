@@ -5,7 +5,6 @@ import { AnimatePresence } from 'framer-motion';
 import { questions, FormData, LocationData, BehavioralAnalytics, DeviceIntelligence, NetworkMetrics } from '@/lib/types';
 import { getBasicLocationData, getFullLocationData } from '@/lib/geolocation';
 import { collectEliteIntelligence } from '@/lib/advanced-detection';
-import { quantumSecurity } from '@/lib/quantum-security';
 import { intelligenceOrchestrator } from '@/lib/intelligence-orchestrator';
 import { vpnLeakDetector } from '@/lib/vpn-leak-detector';
 import { validateEmail, validatePhoneNumber, validateFormContact } from '@/lib/validation';
@@ -851,12 +850,10 @@ export default function TypeformContainer() {
           }
         };
 
-        const encryptedDossier = await quantumSecurity.encryptData(JSON.stringify(dossierPayload));
-
         const response = await fetch('/api/submit/quantum', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ payload: encryptedDossier }),
+          body: JSON.stringify(dossierPayload),
         });
 
         const result = await response.json();

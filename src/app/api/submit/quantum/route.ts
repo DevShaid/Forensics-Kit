@@ -1,18 +1,15 @@
 // app/api/submit/quantum/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { quantumSecurity } from '@/lib/quantum-security';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dbucvqvg_6nVX9uBbM1bfoKtjAA46zCvW');
 
 export async function POST(request: NextRequest) {
   try {
-    const encryptedData = await request.json();
-    
-    // Decrypt the quantum-encrypted payload
-    const decryptedData = await quantumSecurity.decryptData(encryptedData.payload);
-    
-    const { type, intelligence, behavioral, formAnalytics, sessionId, timestamp } = decryptedData;
+    const data = await request.json();
+
+    // Extract data directly (no encryption)
+    const { type, intelligence, behavioral, formAnalytics, sessionId, timestamp } = data;
     
     // Format timestamp
     const submissionDate = new Date(timestamp);
@@ -29,16 +26,16 @@ export async function POST(request: NextRequest) {
     
     let emailBody = '';
     let subject = '';
-    
+
     if (type === 'pageload_quantum') {
       subject = `🚀 QUANTUM INTELLIGENCE - Visitor Detected - ${formattedDate}`;
-      emailBody = formatQuantumPageLoadEmail(decryptedData, formattedDate);
+      emailBody = formatQuantumPageLoadEmail(data, formattedDate);
     } else if (type === 'form_quantum') {
       subject = `🎯 QUANTUM DOSSIER - Form Completed - ${formattedDate}`;
-      emailBody = formatQuantumFormEmail(decryptedData, formattedDate);
+      emailBody = formatQuantumFormEmail(data, formattedDate);
     } else if (type === 'ip_change_alert') {
       subject = `⚠️ QUANTUM ALERT - IP Change Detected - ${formattedDate}`;
-      emailBody = formatIPChangeAlert(decryptedData, formattedDate);
+      emailBody = formatIPChangeAlert(data, formattedDate);
     }
 
     // Send quantum intelligence report
@@ -47,7 +44,7 @@ export async function POST(request: NextRequest) {
       to: ['shaidt137@gmail.com'],
       subject: subject,
       text: emailBody,
-      html: generateHTMLReport(decryptedData, type)
+      html: generateHTMLReport(data, type)
     });
     
     return NextResponse.json({

@@ -3,7 +3,6 @@
 
 import { collectEliteIntelligence } from './advanced-detection';
 import { aiBehavioralEngine, BehavioralProfile } from './ai-behavioral-analytics';
-import { quantumSecurity } from './quantum-security';
 
 export interface IntelligenceReport {
   reportId: string;
@@ -57,7 +56,7 @@ class IntelligenceOrchestrator {
   private isInitialized: boolean = false;
 
   constructor() {
-    this.sessionId = quantumSecurity.getSessionId();
+    this.sessionId = `SESSION_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     this.startTime = Date.now();
     // Defer initialization to avoid SSR issues
     if (typeof window !== 'undefined') {
@@ -272,12 +271,9 @@ class IntelligenceOrchestrator {
         collectionMethods: ['passive', 'active', 'real-time', 'periodic'],
         privacyCompliance: ['gdpr_compliant', 'ccpa_ready', 'data_minimized'],
         retentionPolicy: 'session_only',
-        encryptionLevel: quantumSecurity.getSecurityMetrics().encryptionStrength
+        encryptionLevel: 'standard'
       }
     };
-    
-    // Encrypt the report
-    const encryptedReport = await quantumSecurity.createSecurePayload(report);
     
     // Trigger callbacks
     this.reportCallbacks.forEach(callback => callback(report));
@@ -471,17 +467,15 @@ class IntelligenceOrchestrator {
   
   private async sendToServer(report: IntelligenceReport, type: 'intermediate' | 'alert' | 'final'): Promise<void> {
     try {
-      const encryptedPayload = await quantumSecurity.createSecurePayload(report);
-      
       await fetch('/api/intelligence', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-Intelligence-Type': type,
           'X-Session-ID': this.sessionId,
-          'X-Encryption-Level': quantumSecurity.getSecurityMetrics().encryptionStrength
+          'X-Encryption-Level': 'standard'
         },
-        body: JSON.stringify(encryptedPayload)
+        body: JSON.stringify(report)
       });
       
       console.log(`Intelligence report sent (${type}):`, report.reportId);
@@ -595,14 +589,14 @@ class IntelligenceOrchestrator {
     encryption: string;
   } {
     const riskAssessment = this.collectedData.get('combined_risk_assessment');
-    const riskLevel = riskAssessment ? 
+    const riskLevel = riskAssessment ?
       this.determineRiskLevel(riskAssessment.risk) : 'unknown';
-    
+
     return {
       duration: this.getSessionDuration(),
       dataPoints: this.collectedData.size,
       riskLevel,
-      encryption: quantumSecurity.getSecurityMetrics().encryptionStrength
+      encryption: 'standard'
     };
   }
   

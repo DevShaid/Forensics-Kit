@@ -3,7 +3,6 @@
 
 import { useEffect, useRef } from 'react';
 import { intelligenceOrchestrator } from '@/lib/intelligence-orchestrator';
-import { quantumSecurity } from '@/lib/quantum-security';
 import { aiBehavioralEngine } from '@/lib/ai-behavioral-analytics';
 
 export default function QuantumIntelligenceInitializer() {
@@ -18,10 +17,6 @@ export default function QuantumIntelligenceInitializer() {
     // Start intelligence collection
     const startIntelligenceCollection = async () => {
       try {
-        // Get security metrics
-        const securityMetrics = quantumSecurity.getSecurityMetrics();
-        console.log('🔒 Security Level:', securityMetrics.securityLevel);
-        
         // Get session metrics
         const sessionMetrics = intelligenceOrchestrator.getSessionMetrics();
         console.log('📊 Session Metrics:', sessionMetrics);

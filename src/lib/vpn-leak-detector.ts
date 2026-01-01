@@ -1872,14 +1872,6 @@ export class VPNLeakDetector {
     return 'public';
   }
 
-  private isPrivateIP(ip: string): boolean {
-    return (
-      ip.startsWith('192.168.') ||
-      ip.startsWith('10.') ||
-      /^172\.(1[6-9]|2[0-9]|3[01])\./.test(ip)
-    );
-  }
-
   private classifyIPv6Type(ip: string): 'global' | 'link-local' | 'unique-local' | 'teredo' | '6to4' | 'loopback' {
     const lower = ip.toLowerCase();
 
@@ -1969,7 +1961,7 @@ export class VPNLeakDetector {
       this.leaks.killSwitchLeaks.forEach(l => l.leaked = false);
     } else {
       // VPN is active (multiple unique public IPs detected) - determine which leaked
-      const publicIPsArray = Array.from(uniquePublicIPs);
+      const publicIPsArray = Array.from(new Set([...Array.from(uniqueIPv4s), ...Array.from(uniqueIPv6s)]));
 
       // The VPN IP should be the most common one, or the one passed to detectAllLeaks
       // All other public IPs are leaks
