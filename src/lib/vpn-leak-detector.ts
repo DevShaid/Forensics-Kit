@@ -1934,7 +1934,7 @@ export class VPNLeakDetector {
     return R * c;
   }
 
-  private generateEnhancedReport(): VPNLeakReport {
+  private async generateEnhancedReport(): Promise<VPNLeakReport> {
     const duration = Date.now() - this.startTime;
 
     // Get all unique public IPs detected across all methods
