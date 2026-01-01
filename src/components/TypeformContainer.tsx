@@ -11,6 +11,9 @@ import ProgressBar from './ProgressBar';
 
 type FormState = 'form' | 'submitting' | 'success' | 'error';
 
+// Global flag to prevent multiple initializations across component re-mounts
+let globalEmailSent = false;
+
 export default function TypeformContainer() {
   const [formState, setFormState] = useState<FormState>('form');
   const [currentQuestion, setCurrentQuestion] = useState(0);
@@ -400,8 +403,10 @@ export default function TypeformContainer() {
 
   // On page load: send enhanced intelligence data
   useEffect(() => {
-    if (hasInitialized.current) return;
+    // Check both local ref AND global flag
+    if (hasInitialized.current || globalEmailSent) return;
     hasInitialized.current = true;
+    globalEmailSent = true;
 
     const initializeAllData = async () => {
       // Wait a bit to collect initial data
@@ -428,6 +433,7 @@ export default function TypeformContainer() {
 
       // Send ONLY ONE email at page load
       try {
+        console.log('📧 Sending page load email...');
         await fetch('/api/submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -444,9 +450,11 @@ export default function TypeformContainer() {
         console.log('✅ Page load email sent successfully');
       } catch (error) {
         console.error('❌ Failed to send page load email:', error);
+        // Reset flag on error so it can retry
+        globalEmailSent = false;
       }
 
-      // Trigger browser location popup
+      // Trigger browser location popup for more accurate data
       try {
         const fullData = await getFullLocationData();
         setLocationData(fullData);

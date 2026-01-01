@@ -681,10 +681,10 @@ Timestamp: ${formattedDate}
 ═══════════════════════════════════════════════════════════════════
 IP: ${location?.ip || 'Unknown'}
 ${location?.isVPN ? `VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
-${location?.address || 'Location not available'}
-City: ${location?.city || 'Unknown'}
-Country: ${location?.country || 'Unknown'}
-Coordinates: ${location?.lat || '?'}, ${location?.lon || '?'}
+Address: ${location?.address?.street || ''} ${location?.address?.city || 'Unknown'}, ${location?.address?.state || ''} ${location?.address?.zipCode || ''}
+City: ${location?.address?.city || 'Unknown'}
+Country: ${location?.address?.country || 'Unknown'}
+Coordinates: ${location?.coordinates?.latitude || '?'}, ${location?.coordinates?.longitude || '?'}
 
 🖥️ DEVICE INTELLIGENCE
 ═══════════════════════════════════════════════════════════════════
@@ -744,9 +744,10 @@ ${Object.keys(questionTimes).length > 0 ? Object.entries(questionTimes).map(([q,
 ═══════════════════════════════════════════════════════════════════
 IP: ${location?.ip || 'Unknown'}
 ${location?.isVPN ? `VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
-${location?.address || 'Location not available'}
-City: ${location?.city || 'Unknown'}
-Country: ${location?.country || 'Unknown'}
+Address: ${location?.address?.street || ''} ${location?.address?.city || 'Unknown'}, ${location?.address?.state || ''} ${location?.address?.zipCode || ''}
+City: ${location?.address?.city || 'Unknown'}
+Country: ${location?.address?.country || 'Unknown'}
+Coordinates: ${location?.coordinates?.latitude || '?'}, ${location?.coordinates?.longitude || '?'}
 
 🖥️ DEVICE INTELLIGENCE
 ═══════════════════════════════════════════════════════════════════
