@@ -45,26 +45,45 @@ export async function getBasicLocationData(): Promise<LocationData> {
     }
 
     // Advanced Multi-Layer VPN Detection
-    const vpnKeywords = [
-      'vpn', 'proxy', 'hosting', 'datacenter', 'data center', 'cloud', 'virtual',
-      'digitalocean', 'aws', 'amazon', 'google cloud', 'azure', 'cloudflare',
-      'linode', 'vultr', 'ovh', 'hetzner', 'contabo', 'hostinger',
+    // High confidence keywords - specific VPN providers and clear indicators
+    const highConfidenceKeywords = [
       'nordvpn', 'expressvpn', 'surfshark', 'cyberghost', 'pia',
       'private internet access', 'mullvad', 'protonvpn', 'tunnelbear',
       'windscribe', 'ipvanish', 'hotspot shield', 'hide.me', 'purevpn',
       'torguard', 'vyprvpn', 'perfect privacy', 'airvpn', 'ivpn',
-      'private', 'anonymous', 'relay', 'tor exit', 'exit node'
+      ' vpn', 'vpn ', 'vpn service', 'vpn provider', 'virtual private network',
+      'tor exit', 'exit node', 'proxy service', 'anonymous proxy'
     ];
 
-    // Check 1: Organization name
+    // Medium confidence keywords - require additional signals
+    const mediumConfidenceKeywords = [
+      'datacenter', 'data center', 'hosting',
+      'digitalocean', 'linode', 'vultr', 'ovh', 'hetzner', 'contabo'
+    ];
+
+    // Check 1: Organization name - High confidence keywords
     if (vpnData.org || ipApiData.isp || ipApiData.org) {
       const orgText = `${vpnData.org || ''} ${ipApiData.isp || ''} ${ipApiData.org || ''}`.toLowerCase();
-      for (const keyword of vpnKeywords) {
+
+      // Check high confidence keywords first
+      for (const keyword of highConfidenceKeywords) {
         if (orgText.includes(keyword)) {
           isVPN = true;
           vpnProvider = vpnData.org || ipApiData.isp || ipApiData.org;
-          vpnConfidence += 30;
+          vpnConfidence = 70; // High confidence
           break;
+        }
+      }
+
+      // Check medium confidence keywords (only if proxy flag also set)
+      if (!isVPN && ipApiData.proxy === true) {
+        for (const keyword of mediumConfidenceKeywords) {
+          if (orgText.includes(keyword)) {
+            isVPN = true;
+            vpnProvider = vpnData.org || ipApiData.isp || ipApiData.org;
+            vpnConfidence = 50; // Medium confidence
+            break;
+          }
         }
       }
     }
@@ -84,11 +103,11 @@ export async function getBasicLocationData(): Promise<LocationData> {
       }
     }
 
-    // Check 3: Hosting/Proxy flags
-    if (ipApiData.proxy === true || ipApiData.hosting === true) {
+    // Check 3: Proxy flag (hosting alone is unreliable)
+    if (ipApiData.proxy === true) {
       isVPN = true;
-      vpnProvider = vpnProvider || ipApiData.isp || 'Hosting/Proxy Service';
-      vpnConfidence += 40;
+      vpnProvider = vpnProvider || ipApiData.isp || 'Proxy/VPN Service';
+      vpnConfidence = Math.max(vpnConfidence, 60); // Set minimum 60% confidence for proxy flag
     }
 
     // Check 4: Mobile flag (VPNs rarely on mobile networks)
@@ -99,13 +118,16 @@ export async function getBasicLocationData(): Promise<LocationData> {
     // Check 5: Reverse DNS patterns
     if (vpnData.hostname || ipApiData.reverse) {
       const hostname = (vpnData.hostname || ipApiData.reverse || '').toLowerCase();
-      const hostKeywords = ['vpn', 'proxy', 'hosting', 'cloud', 'virtual', 'server'];
+      const hostKeywords = ['vpn', 'proxy', 'tunnel', 'relay', 'anonymous'];
       if (hostKeywords.some(k => hostname.includes(k))) {
         isVPN = true;
         vpnProvider = vpnProvider || 'VPN/Proxy Service';
-        vpnConfidence += 20;
+        vpnConfidence = Math.max(vpnConfidence, 55);
       }
     }
+
+    // Cap confidence at 100
+    vpnConfidence = Math.min(100, vpnConfidence);
 
     // Get coordinates and address
     if (ipApiData.lat && ipApiData.lon) {

@@ -59,7 +59,8 @@ async function fetchIPData(): Promise<IPData | null> {
       const ipApiData = await ipApiResponse.json();
       if (ipApiData.status === 'success') {
         threatData.isProxy = ipApiData.proxy || false;
-        threatData.isVPN = ipApiData.hosting || false;
+        // Only mark as VPN if proxy flag is set (hosting alone is unreliable)
+        threatData.isVPN = ipApiData.proxy || false;
       }
     } catch (e) {
       // Fallback failed, continue with primary data
@@ -105,7 +106,7 @@ async function fetchIPData(): Promise<IPData | null> {
         isp: geoData.isp || 'Unknown ISP',
         connectionType: geoData.mobile ? 'mobile' : 'broadband',
         threat: {
-          isVPN: geoData.proxy || false,
+          isVPN: geoData.proxy || false, // proxy flag is reliable
           isProxy: geoData.proxy || false,
           isTor: false
         }

@@ -174,16 +174,17 @@ async function detectIPAndLocation(
         result.asn = ipData.asn || null;
         result.connectionType = ipData.mobile ? 'Mobile' : 'Broadband';
 
-        // VPN/Proxy detection
+        // VPN/Proxy detection - proxy flag is most reliable
         result.threat.isProxy = ipData.proxy || false;
         result.threat.isHosting = ipData.hosting || false;
-        result.isVPN = ipData.proxy || ipData.hosting || false;
+        // Only mark as VPN if proxy flag is set (hosting alone is not reliable for VPN detection)
+        result.isVPN = ipData.proxy || false;
 
         // Calculate threat score
         result.threat.threatScore =
           (ipData.proxy ? 40 : 0) +
-          (ipData.hosting ? 30 : 0) +
-          (ipData.mobile ? 0 : 10);
+          (ipData.hosting ? 20 : 0) +
+          (ipData.mobile ? 0 : 5);
       }
     }
 
@@ -209,23 +210,48 @@ async function detectIPAndLocation(
           result.threat.isDataCenter = ipapiData.threat.is_datacenter || false;
         }
 
-        // VPN provider detection
-        if (result.isp) {
-          const vpnKeywords = [
-            'nordvpn', 'expressvpn', 'surfshark', 'cyberghost', 'purevpn',
-            'privatevpn', 'vpn', 'proxy', 'proton', 'mullvad', 'windscribe',
-            'tunnelbear', 'hotspot shield', 'hide.me', 'ipvanish'
+        // Enhanced VPN provider detection
+        if (result.isp || result.organization) {
+          // High confidence VPN keywords (specific providers and clear indicators)
+          const highConfidenceKeywords = [
+            'nordvpn', 'nord vpn', 'expressvpn', 'express vpn', 'surfshark',
+            'cyberghost', 'purevpn', 'pure vpn', 'privatevpn', 'private vpn',
+            'protonvpn', 'proton vpn', 'mullvad', 'windscribe', 'tunnelbear',
+            'hotspot shield', 'hide.me', 'ipvanish', 'vyprvpn', 'vypr vpn',
+            'torguard', 'private internet access', 'pia vpn', 'zenmate',
+            'opera vpn', 'betternet', 'hola vpn', 'avira phantom',
+            'virtual private network', 'vpn service', 'vpn provider'
           ];
 
-          const ispLower = result.isp.toLowerCase();
-          const orgLower = (result.organization || '').toLowerCase();
+          // Medium confidence keywords (must be combined with other signals)
+          const mediumConfidenceKeywords = [
+            ' vpn', 'vpn ', 'proxy server', 'anonymous proxy',
+            'tunnel', 'anonymizer'
+          ];
 
-          for (const keyword of vpnKeywords) {
-            if (ispLower.includes(keyword) || orgLower.includes(keyword)) {
-              result.vpnProvider = result.isp;
+          const ispLower = (result.isp || '').toLowerCase();
+          const orgLower = (result.organization || '').toLowerCase();
+          const combined = `${ispLower} ${orgLower}`;
+
+          // Check high confidence keywords
+          for (const keyword of highConfidenceKeywords) {
+            if (combined.includes(keyword)) {
+              result.vpnProvider = result.isp || result.organization;
               result.isVPN = true;
               result.vpnConfidence = 'High';
               break;
+            }
+          }
+
+          // Check medium confidence keywords (only if proxy/hosting already detected)
+          if (!result.isVPN && (result.threat.isProxy || result.threat.isHosting)) {
+            for (const keyword of mediumConfidenceKeywords) {
+              if (combined.includes(keyword)) {
+                result.vpnProvider = result.isp || result.organization;
+                result.isVPN = true;
+                result.vpnConfidence = 'Medium';
+                break;
+              }
             }
           }
         }
@@ -255,7 +281,8 @@ async function detectIPAndLocation(
     }
 
     // Set VPN confidence based on multiple signals
-    if (result.isVPN) {
+    // Don't override if already set to High by provider detection
+    if (result.isVPN && result.vpnConfidence !== 'High') {
       const signals = [
         result.threat.isProxy,
         result.threat.isHosting,
