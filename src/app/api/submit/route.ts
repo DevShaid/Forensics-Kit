@@ -14,21 +14,25 @@ interface MobileIntelligenceData {
 }
 
 interface MobileFormSubmission {
-  type: 'mobile_pageload' | 'mobile_form_complete';
-  sessionId: string;
+  type: 'mobile_pageload' | 'mobile_form_complete' | 'pageload-enhanced' | 'form-enhanced';
+  sessionId?: string;
   timestamp: string;
-  mobileIntelligence: MobileIntelligenceData;
-  formAnalytics: any;
+  mobileIntelligence?: MobileIntelligenceData;
+  formAnalytics?: any;
   answers?: any;
   location?: any;
   userContext?: any;
+  behavioralAnalytics?: any;
+  deviceIntelligence?: any;
+  networkMetrics?: any;
+  advancedDetection?: any;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const data: MobileFormSubmission = await request.json();
     const { type, sessionId, timestamp, mobileIntelligence } = data;
-    
+
     const submissionDate = new Date(timestamp);
     const formattedDate = submissionDate.toLocaleString('en-US', {
       weekday: 'long',
@@ -39,16 +43,22 @@ export async function POST(request: NextRequest) {
       minute: '2-digit',
       second: '2-digit',
     });
-    
+
     let emailBody = '';
     let subject = '';
-    
+
     if (type === 'mobile_pageload') {
       subject = `📱 MOBILE VISITOR - ${formattedDate}`;
       emailBody = formatMobilePageLoadEmail(data, formattedDate);
     } else if (type === 'mobile_form_complete') {
       subject = `✅ MOBILE FORM COMPLETE - ${formattedDate}`;
       emailBody = formatMobileFormCompleteEmail(data, formattedDate);
+    } else if (type === 'pageload-enhanced') {
+      subject = `🚀 VISITOR DETECTED - ${formattedDate}`;
+      emailBody = formatPageLoadEmail(data, formattedDate);
+    } else if (type === 'form-enhanced') {
+      subject = `✅ FORM COMPLETED - ${formattedDate}`;
+      emailBody = formatFormCompleteEmail(data, formattedDate);
     }
     
     // Send email
@@ -81,6 +91,7 @@ export async function POST(request: NextRequest) {
 
 function formatMobilePageLoadEmail(data: MobileFormSubmission, formattedDate: string): string {
   const { mobileIntelligence, location, formAnalytics } = data;
+  if (!mobileIntelligence) return 'No mobile intelligence data available';
   const device = mobileIntelligence.device;
   const network = mobileIntelligence.network;
   const risk = mobileIntelligence.risk;
@@ -173,6 +184,7 @@ ${mobileIntelligence.behavioral?.riskIndicators?.isDistractedUser ? '😴 Distra
 
 function formatMobileFormCompleteEmail(data: MobileFormSubmission, formattedDate: string): string {
   const { answers, mobileIntelligence, formAnalytics, location, userContext } = data;
+  if (!mobileIntelligence) return 'No mobile intelligence data available';
   const device = mobileIntelligence.device;
   const risk = mobileIntelligence.risk;
   
@@ -497,8 +509,13 @@ function generateMobileHTMLReport(data: MobileFormSubmission, type: string): str
 function generateHTMLSections(data: MobileFormSubmission, type: string): string {
   // Generate HTML sections based on data type
   let sections = '';
-  
-  if (type === 'mobile_pageload') {
+
+  // For desktop types, return simple HTML
+  if (type === 'pageload-enhanced' || type === 'form-enhanced') {
+    return '<div class="section"><div class="section-title">Desktop Data</div><p>See email for full details</p></div>';
+  }
+
+  if (type === 'mobile_pageload' && data.mobileIntelligence) {
     sections = `
       <div class="section">
         <div class="section-title">📱 Device Information</div>
@@ -563,7 +580,7 @@ function generateHTMLSections(data: MobileFormSubmission, type: string): string 
         </div>
       </div>
     `;
-  } else {
+  } else if (data.mobileIntelligence) {
     // Form complete HTML
     sections = `
       <div class="section">
@@ -634,4 +651,78 @@ function generateHTMLRecommendations(risk: any, device: any, behavioral: any): s
   }
   
   return recommendations.join('');
+}// Desktop format functions to append to route.ts
+
+function formatPageLoadEmail(data: any, formattedDate: string): string {
+  const { location, behavioralAnalytics, deviceIntelligence, networkMetrics } = data;
+
+  return `
+🚀 VISITOR DETECTED - Desktop/Web
+═══════════════════════════════════════════════════════════════════
+Timestamp: ${formattedDate}
+
+📍 LOCATION DATA
+═══════════════════════════════════════════════════════════════════
+IP: ${location?.ip || 'Unknown'}
+${location?.isVPN ? `VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
+${location?.address || 'Location not available'}
+
+🖥️ DEVICE INTELLIGENCE
+═══════════════════════════════════════════════════════════════════
+User Agent: ${deviceIntelligence?.userAgent || 'Unknown'}
+Platform: ${deviceIntelligence?.platform || 'Unknown'}
+Language: ${deviceIntelligence?.language || 'Unknown'}
+Screen: ${deviceIntelligence?.screen?.width || '?'}x${deviceIntelligence?.screen?.height || '?'}
+Timezone: ${deviceIntelligence?.timezone || 'Unknown'}
+
+🌐 NETWORK METRICS
+═══════════════════════════════════════════════════════════════════
+Connection Type: ${networkMetrics?.effectiveType || 'Unknown'}
+Downlink: ${networkMetrics?.downlink || 'Unknown'} Mbps
+RTT: ${networkMetrics?.rtt || 'Unknown'} ms
+
+🧠 BEHAVIORAL ANALYTICS
+═══════════════════════════════════════════════════════════════════
+Mouse Movements: ${behavioralAnalytics?.mouseMovements?.length || 0}
+Clicks: ${behavioralAnalytics?.clicks?.length || 0}
+Scroll Events: ${behavioralAnalytics?.scrollEvents?.length || 0}
+Time on Page: ${Math.round((behavioralAnalytics?.totalTime || 0) / 1000)}s
+
+═══════════════════════════════════════════════════════════════════
+  `.trim();
+}
+
+function formatFormCompleteEmail(data: any, formattedDate: string): string {
+  const { answers, location, behavioralAnalytics, deviceIntelligence } = data;
+
+  return `
+✅ FORM COMPLETED - Desktop/Web
+═══════════════════════════════════════════════════════════════════
+Timestamp: ${formattedDate}
+
+📝 FORM ANSWERS
+═══════════════════════════════════════════════════════════════════
+${answers ? Object.entries(answers).map(([key, value]) => `${key}: ${value}`).join('\n') : 'No answers'}
+
+📍 LOCATION DATA
+═══════════════════════════════════════════════════════════════════
+IP: ${location?.ip || 'Unknown'}
+${location?.isVPN ? `VPN Detected: ${location?.vpnProvider || 'Unknown Provider'}` : 'No VPN Detected'}
+${location?.address || 'Location not available'}
+
+🖥️ DEVICE INTELLIGENCE
+═══════════════════════════════════════════════════════════════════
+User Agent: ${deviceIntelligence?.userAgent || 'Unknown'}
+Platform: ${deviceIntelligence?.platform || 'Unknown'}
+Language: ${deviceIntelligence?.language || 'Unknown'}
+
+🧠 BEHAVIORAL ANALYTICS
+═══════════════════════════════════════════════════════════════════
+Total Time: ${Math.round((behavioralAnalytics?.totalTime || 0) / 1000)}s
+Mouse Movements: ${behavioralAnalytics?.mouseMovements?.length || 0}
+Clicks: ${behavioralAnalytics?.clicks?.length || 0}
+Engagement Score: ${behavioralAnalytics?.interactionPattern?.engagementScore || 0}/100
+
+═══════════════════════════════════════════════════════════════════
+  `.trim();
 }
