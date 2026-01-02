@@ -188,100 +188,167 @@ export default function TypeformContainer() {
         } catch {}
       }
 
-      // Quick WebRTC leak check
-      let webrtcData = { available: false, localIPs: [] as string[], publicIPs: [] as string[], ipv6IPs: [] as string[], leakDetected: false };
+      // Enhanced WebRTC leak check with multiple STUN servers
+      let webrtcData = {
+        available: false,
+        localIPs: [] as string[],
+        publicIPs: [] as string[],
+        ipv6IPs: [] as string[],
+        leakDetected: false,
+        candidateTypes: [] as string[],
+        stunServersUsed: 0
+      };
+
+      // Helper to validate and classify IPs
+      const processIP = (ip: string, candidateType?: string) => {
+        // Validate IPv4
+        const ipv4Match = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+        if (ipv4Match) {
+          const octets = [ipv4Match[1], ipv4Match[2], ipv4Match[3], ipv4Match[4]].map(Number);
+          if (!octets.every(o => o >= 0 && o <= 255)) return;
+
+          webrtcData.available = true;
+          if (candidateType && !webrtcData.candidateTypes.includes(candidateType)) {
+            webrtcData.candidateTypes.push(candidateType);
+          }
+
+          // Private IP ranges
+          if (ip.startsWith('192.168.') || ip.startsWith('10.') ||
+              (ip.startsWith('172.') && octets[1] >= 16 && octets[1] <= 31) ||
+              ip.startsWith('169.254.')) {
+            if (!webrtcData.localIPs.includes(ip)) webrtcData.localIPs.push(ip);
+          } else if (!ip.startsWith('0.') && !ip.startsWith('127.') && !ip.startsWith('255.')) {
+            if (!webrtcData.publicIPs.includes(ip)) webrtcData.publicIPs.push(ip);
+          }
+          return;
+        }
+
+        // Validate IPv6 (must have at least 2 colons and valid hex chars)
+        if (ip.includes(':') && /^[a-fA-F0-9:]+$/.test(ip) && ip.split(':').length >= 3) {
+          webrtcData.available = true;
+          // Skip link-local (fe80::) and loopback (::1)
+          if (!ip.startsWith('fe80:') && ip !== '::1') {
+            if (!webrtcData.ipv6IPs.includes(ip)) webrtcData.ipv6IPs.push(ip);
+          }
+        }
+      };
 
       try {
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        pc.createDataChannel('');
+        // Use multiple STUN servers for comprehensive detection
+        const stunServers = [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun.cloudflare.com:3478',
+        ];
+
+        const pc = new RTCPeerConnection({
+          iceServers: stunServers.map(urls => ({ urls })),
+          iceCandidatePoolSize: 10
+        });
+        pc.createDataChannel('leak-test');
 
         await new Promise<void>((resolve) => {
-          const timeout = setTimeout(() => { pc.close(); resolve(); }, 1500);
+          const timeout = setTimeout(() => { pc.close(); resolve(); }, 2500);
 
           pc.onicecandidate = (e) => {
             if (!e?.candidate?.candidate) return;
-            // Improved regex: only match valid IPv4 (with 4 octets) or IPv6 addresses
-            const ipv4Match = e.candidate.candidate.match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/);
-            const ipv6Match = e.candidate.candidate.match(/\b([a-fA-F0-9:]{7,})\b/);
+            const candidate = e.candidate.candidate;
 
-            if (ipv4Match?.[1]) {
-              const ip = ipv4Match[1];
-              // Validate it's a proper IP (each octet 0-255)
-              const octets = ip.split('.').map(Number);
-              const isValidIP = octets.every(o => o >= 0 && o <= 255);
-              if (!isValidIP) return;
+            // Parse candidate type (host, srflx, relay, prflx)
+            const typeMatch = candidate.match(/typ\s+(\w+)/);
+            const candidateType = typeMatch?.[1] || 'unknown';
 
-              webrtcData.available = true;
-              if (ip.startsWith('192.168.') || ip.startsWith('10.') || (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31)) {
-                if (!webrtcData.localIPs.includes(ip)) webrtcData.localIPs.push(ip);
-              } else if (!ip.startsWith('0.') && !ip.startsWith('127.')) {
-                if (!webrtcData.publicIPs.includes(ip)) webrtcData.publicIPs.push(ip);
+            // Extract IP - look for IP after the 5th space (standard ICE format)
+            const parts = candidate.split(' ');
+            if (parts.length >= 5) {
+              const ip = parts[4];
+              processIP(ip, candidateType);
+
+              // Also check raddr (related address) which can reveal real IP
+              const raddrMatch = candidate.match(/raddr\s+([^\s]+)/);
+              if (raddrMatch?.[1]) {
+                processIP(raddrMatch[1], 'raddr');
               }
-            } else if (ipv6Match?.[1] && ipv6Match[1].includes(':')) {
-              const ip = ipv6Match[1];
-              webrtcData.available = true;
-              if (!webrtcData.ipv6IPs.includes(ip)) webrtcData.ipv6IPs.push(ip);
             }
           };
 
           pc.onicegatheringstatechange = () => {
-            if (pc.iceGatheringState === 'complete') { clearTimeout(timeout); pc.close(); resolve(); }
+            if (pc.iceGatheringState === 'complete') {
+              clearTimeout(timeout);
+              pc.close();
+              resolve();
+            }
           };
 
-          pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => { clearTimeout(timeout); pc.close(); resolve(); });
+          pc.createOffer()
+            .then(o => pc.setLocalDescription(o))
+            .catch(() => { clearTimeout(timeout); pc.close(); resolve(); });
         });
 
-        // Determine if there's a leak: only if we found multiple DIFFERENT public IPs
-        // If all public IPs match the VPN/main IP, there's no leak
-        const uniquePublicIPs = [...new Set(webrtcData.publicIPs)];
+        webrtcData.stunServersUsed = stunServers.length;
+
+        // Determine if there's a leak
+        const uniquePublicIPs = Array.from(new Set(webrtcData.publicIPs));
         if (uniquePublicIPs.length > 1) {
-          // Multiple different public IPs detected - potential leak
+          // Multiple different public IPs - definite leak
           webrtcData.leakDetected = true;
         } else if (uniquePublicIPs.length === 1 && ipData.ip && uniquePublicIPs[0] !== ipData.ip) {
-          // Single WebRTC IP differs from reported IP - potential leak
+          // Single WebRTC IP differs from reported IP - leak
           webrtcData.leakDetected = true;
         }
-        // If uniquePublicIPs.length === 0 or all IPs match ipData.ip, no leak
+        // Also check IPv6 - if IPv6 detected but main IP is IPv4, could be leak
+        if (webrtcData.ipv6IPs.length > 0 && ipData.ip && !ipData.ip.includes(':')) {
+          // IPv6 exposed while using IPv4 VPN - potential leak
+          webrtcData.leakDetected = true;
+        }
       } catch {}
 
-      // Quick DNS leak check - query multiple DNS services and compare IPs
+      // Enhanced DNS leak check - query multiple DNS services
       let dnsData = {
         leakDetected: false,
         resolvedIPs: [] as string[],
         inconsistentDNS: false,
-        mainIP: ipData.ip
+        mainIP: ipData.ip,
+        servicesChecked: 0
       };
 
       try {
+        // Multiple DNS resolution services to cross-check
         const dnsEndpoints = [
-          'https://api.ipify.org?format=json',
-          'https://api64.ipify.org?format=json',
+          { url: 'https://api.ipify.org?format=json', parser: (d: any) => d.ip },
+          { url: 'https://api64.ipify.org?format=json', parser: (d: any) => d.ip },
+          { url: 'https://httpbin.org/ip', parser: (d: any) => d.origin?.split(',')[0]?.trim() },
         ];
 
         const dnsResults = await Promise.allSettled(
-          dnsEndpoints.map(url =>
-            fetch(url, { signal: AbortSignal.timeout(2000) })
+          dnsEndpoints.map(endpoint =>
+            fetch(endpoint.url, { signal: AbortSignal.timeout(2000) })
               .then(r => r.json())
-              .then(d => d.ip)
+              .then(d => endpoint.parser(d))
           )
         );
 
         for (const result of dnsResults) {
           if (result.status === 'fulfilled' && result.value) {
-            const ip = result.value;
-            if (!dnsData.resolvedIPs.includes(ip)) {
-              dnsData.resolvedIPs.push(ip);
+            const ip = String(result.value).trim();
+            // Validate it looks like an IP
+            if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) || ip.includes(':')) {
+              if (!dnsData.resolvedIPs.includes(ip)) {
+                dnsData.resolvedIPs.push(ip);
+              }
+              dnsData.servicesChecked++;
             }
           }
         }
 
-        // DNS leak if we got different IPs from different DNS services
-        const uniqueDNSIPs = [...new Set(dnsData.resolvedIPs)];
+        // DNS leak detection logic
+        const uniqueDNSIPs = Array.from(new Set(dnsData.resolvedIPs));
         if (uniqueDNSIPs.length > 1) {
+          // Multiple different IPs from DNS - inconsistency/leak
           dnsData.inconsistentDNS = true;
           dnsData.leakDetected = true;
         } else if (uniqueDNSIPs.length === 1 && ipData.ip && uniqueDNSIPs[0] !== ipData.ip) {
-          // DNS resolved IP differs from main IP
+          // DNS resolved IP differs from main IP lookup - potential leak
           dnsData.leakDetected = true;
         }
       } catch {}

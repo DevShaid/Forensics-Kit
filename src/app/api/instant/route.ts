@@ -66,12 +66,15 @@ interface InstantIntelligence {
     publicIPs: string[];
     ipv6IPs: string[];
     leakDetected: boolean;
+    candidateTypes?: string[];
+    stunServersUsed?: number;
   };
   dns?: {
     leakDetected: boolean;
     resolvedIPs: string[];
     inconsistentDNS: boolean;
     mainIP: string;
+    servicesChecked?: number;
   };
   referrer: string;
   entryUrl: string;
@@ -259,6 +262,8 @@ Audio FP: ${data.browser.audioFingerprint}
 ════════════════════════════════════════════════════════════════
 
 WebRTC Available: ${data.webrtc.available ? 'Yes' : 'No'}
+STUN Servers Tested: ${data.webrtc.stunServersUsed || 1}
+Candidate Types: ${data.webrtc.candidateTypes?.join(', ') || 'N/A'}
 Leak Detected: ${data.webrtc.leakDetected ? '🔴 YES - REAL IP EXPOSED!' : '🟢 No - VPN is protecting you'}
 
 Local IPs: ${data.webrtc.localIPs?.length ? data.webrtc.localIPs.join(', ') : 'None detected'}
@@ -286,9 +291,11 @@ ${(() => {
 🔍 DNS LEAK DETECTION
 ════════════════════════════════════════════════════════════════
 
+DNS Services Checked: ${data.dns?.servicesChecked || 0}
 DNS Leak Detected: ${data.dns?.leakDetected ? '🔴 YES - DNS REQUESTS EXPOSED!' : '🟢 No - DNS is secure'}
 DNS Resolved IPs: ${data.dns?.resolvedIPs?.length ? data.dns.resolvedIPs.join(', ') : 'None detected'}
 Inconsistent DNS: ${data.dns?.inconsistentDNS ? '🔴 YES - Multiple different IPs from DNS services' : '🟢 No'}
+Main IP Match: ${data.dns?.resolvedIPs?.length && data.dns.resolvedIPs[0] === data.ip.address ? '✅ Yes' : (data.dns?.resolvedIPs?.length ? '❌ No' : 'N/A')}
 
 ${(() => {
   if (!data.dns?.leakDetected) {
