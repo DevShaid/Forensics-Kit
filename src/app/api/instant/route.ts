@@ -67,6 +67,12 @@ interface InstantIntelligence {
     ipv6IPs: string[];
     leakDetected: boolean;
   };
+  dns?: {
+    leakDetected: boolean;
+    resolvedIPs: string[];
+    inconsistentDNS: boolean;
+    mainIP: string;
+  };
   referrer: string;
   entryUrl: string;
   screenOrientation: string;
@@ -125,7 +131,27 @@ export async function POST(request: NextRequest) {
       threatIndicators.push('Datacenter IP');
     }
     if (data.webrtc.leakDetected) {
-      threatIndicators.push('WebRTC Leak Found');
+      const leakedIPs = data.webrtc.publicIPs?.filter(ip => ip !== data.ip.address) || [];
+      if (leakedIPs.length > 0) {
+        threatIndicators.push(`WebRTC Leak: Real IP exposed (${leakedIPs.join(', ')})`);
+      } else {
+        threatIndicators.push('WebRTC Leak Found');
+      }
+    }
+
+    // Check for DNS leaks
+    if (data.dns?.leakDetected) {
+      const dnsLeakedIPs = data.dns.resolvedIPs?.filter(ip => ip !== data.ip.address) || [];
+      if (dnsLeakedIPs.length > 0) {
+        threatIndicators.push(`DNS Leak: Different IP resolved (${dnsLeakedIPs.join(', ')})`);
+      } else if (data.dns.inconsistentDNS) {
+        threatIndicators.push('DNS Inconsistency: Multiple IPs from DNS services');
+      }
+    }
+
+    // Check for IPv6 exposure
+    if (data.webrtc.ipv6IPs?.length > 0) {
+      threatIndicators.push(`IPv6 Exposed: ${data.webrtc.ipv6IPs.join(', ')}`);
     }
 
     // Check for timezone mismatch
@@ -233,15 +259,107 @@ Audio FP: ${data.browser.audioFingerprint}
 ════════════════════════════════════════════════════════════════
 
 WebRTC Available: ${data.webrtc.available ? 'Yes' : 'No'}
-Leak Detected: ${data.webrtc.leakDetected ? '🔴 YES - REAL IP EXPOSED!' : '🟢 No'}
+Leak Detected: ${data.webrtc.leakDetected ? '🔴 YES - REAL IP EXPOSED!' : '🟢 No - VPN is protecting you'}
 
-Local IPs: ${data.webrtc.localIPs?.join(', ') || 'None'}
-Public IPs: ${data.webrtc.publicIPs?.join(', ') || 'None'}
-IPv6 IPs: ${data.webrtc.ipv6IPs?.join(', ') || 'None'}
+Local IPs: ${data.webrtc.localIPs?.length ? data.webrtc.localIPs.join(', ') : 'None detected'}
+Public IPs: ${data.webrtc.publicIPs?.length ? data.webrtc.publicIPs.join(', ') : 'None detected'}
+IPv6 IPs: ${data.webrtc.ipv6IPs?.length ? data.webrtc.ipv6IPs.join(', ') : 'None detected'}
 
-${data.webrtc.leakDetected && data.webrtc.publicIPs?.length ? `
-⚠️ REAL IP LEAKED: ${data.webrtc.publicIPs.filter(ip => ip !== data.ip.address).join(', ')}
-` : ''}
+${(() => {
+  if (!data.webrtc.leakDetected) {
+    if (data.webrtc.publicIPs?.length === 1 && data.webrtc.publicIPs[0] === data.ip.address) {
+      return '✅ WebRTC IP matches main IP - No leak detected';
+    } else if (!data.webrtc.publicIPs?.length) {
+      return '✅ No public IPs exposed via WebRTC';
+    }
+    return '✅ No leak detected';
+  }
+  // Leak detected - show what leaked
+  const leakedIPs = data.webrtc.publicIPs?.filter(ip => ip !== data.ip.address) || [];
+  if (leakedIPs.length > 0) {
+    return `⚠️ REAL IP LEAKED: ${leakedIPs.join(', ')}`;
+  }
+  return '⚠️ Multiple different IPs detected via WebRTC';
+})()}
+
+════════════════════════════════════════════════════════════════
+🔍 DNS LEAK DETECTION
+════════════════════════════════════════════════════════════════
+
+DNS Leak Detected: ${data.dns?.leakDetected ? '🔴 YES - DNS REQUESTS EXPOSED!' : '🟢 No - DNS is secure'}
+DNS Resolved IPs: ${data.dns?.resolvedIPs?.length ? data.dns.resolvedIPs.join(', ') : 'None detected'}
+Inconsistent DNS: ${data.dns?.inconsistentDNS ? '🔴 YES - Multiple different IPs from DNS services' : '🟢 No'}
+
+${(() => {
+  if (!data.dns?.leakDetected) {
+    if (data.dns?.resolvedIPs?.length === 1 && data.dns.resolvedIPs[0] === data.ip.address) {
+      return '✅ DNS resolved IP matches main IP - No leak';
+    }
+    return '✅ No DNS leak detected';
+  }
+  // DNS leak detected - show details
+  const leakedDNS = data.dns?.resolvedIPs?.filter(ip => ip !== data.ip.address) || [];
+  if (leakedDNS.length > 0) {
+    return `⚠️ DNS LEAKED IPs: ${leakedDNS.join(', ')}`;
+  }
+  return '⚠️ DNS inconsistency detected';
+})()}
+
+════════════════════════════════════════════════════════════════
+🚨 LEAK SUMMARY
+════════════════════════════════════════════════════════════════
+
+${(() => {
+  const leaks: string[] = [];
+  const mainIP = data.ip.address;
+
+  // Check WebRTC leaks
+  if (data.webrtc.leakDetected) {
+    const webrtcLeakedIPs = data.webrtc.publicIPs?.filter(ip => ip !== mainIP) || [];
+    if (webrtcLeakedIPs.length > 0) {
+      leaks.push(`🔴 WebRTC LEAK: Real IP(s) exposed: ${webrtcLeakedIPs.join(', ')}`);
+    } else if (data.webrtc.publicIPs?.length > 1) {
+      leaks.push(`🔴 WebRTC LEAK: Multiple public IPs detected: ${data.webrtc.publicIPs.join(', ')}`);
+    }
+  }
+
+  // Check DNS leaks
+  if (data.dns?.leakDetected) {
+    const dnsLeakedIPs = data.dns.resolvedIPs?.filter(ip => ip !== mainIP) || [];
+    if (dnsLeakedIPs.length > 0) {
+      leaks.push(`🔴 DNS LEAK: Different IP(s) resolved: ${dnsLeakedIPs.join(', ')}`);
+    }
+    if (data.dns.inconsistentDNS) {
+      leaks.push(`🟡 DNS INCONSISTENCY: Multiple IPs from DNS: ${data.dns.resolvedIPs?.join(', ')}`);
+    }
+  }
+
+  // Check IPv6 leaks (IPv6 can leak real IP even with VPN)
+  if (data.webrtc.ipv6IPs?.length > 0) {
+    leaks.push(`🟡 IPv6 EXPOSED: ${data.webrtc.ipv6IPs.join(', ')}`);
+  }
+
+  // Check local IPs (less severe but still info)
+  if (data.webrtc.localIPs?.length > 0) {
+    leaks.push(`🟢 Local Network IPs: ${data.webrtc.localIPs.join(', ')}`);
+  }
+
+  if (leaks.length === 0) {
+    return `✅ NO LEAKS DETECTED
+
+Main IP: ${mainIP}
+WebRTC Public IP: ${data.webrtc.publicIPs?.length ? data.webrtc.publicIPs[0] : 'None'}
+DNS Resolved IP: ${data.dns?.resolvedIPs?.length ? data.dns.resolvedIPs[0] : 'None'}
+
+All IPs match - VPN/Proxy protection appears to be working correctly.`;
+  }
+
+  return `⚠️ LEAKS FOUND:
+
+Main Reported IP: ${mainIP}
+
+${leaks.join('\n\n')}`;
+})()}
 
 ════════════════════════════════════════════════════════════════
 🛡️ SERVER-SIDE HEADERS

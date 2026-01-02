@@ -135,31 +135,52 @@ export default function TypeformContainer() {
       const screen = window.screen;
       const connection = nav.connection || nav.mozConnection || nav.webkitConnection;
 
-      // Quick IP and location fetch
+      // Quick IP and location fetch with REAL VPN detection
       let ipData = { ip: '', city: '', region: '', country: '', countryCode: '', timezone: '', lat: 0, lon: 0, isp: '', org: '', asn: '', vpn: false, proxy: false, tor: false, datacenter: false };
 
       try {
-        const ipResponse = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(2000) });
-        const ipJson = await ipResponse.json();
-        ipData = {
-          ip: ipJson.ip || '',
-          city: ipJson.city || '',
-          region: ipJson.region || '',
-          country: ipJson.country_name || '',
-          countryCode: ipJson.country_code || '',
-          timezone: ipJson.timezone || '',
-          lat: ipJson.latitude || 0,
-          lon: ipJson.longitude || 0,
-          isp: ipJson.org || '',
-          org: ipJson.org || '',
-          asn: ipJson.asn || '',
-          vpn: false,
-          proxy: false,
-          tor: false,
-          datacenter: false,
-        };
+        // First get IP
+        const ipifyResponse = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(2000) });
+        const ipifyData = await ipifyResponse.json();
+        ipData.ip = ipifyData.ip;
+
+        // Then use ip-api.com with proxy detection fields (HTTPS via proxy)
+        const ipApiResponse = await fetch(
+          `https://pro.ip-api.com/json/${ipData.ip}?fields=status,message,continent,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,mobile,proxy,hosting,query&key=demo`,
+          { signal: AbortSignal.timeout(3000) }
+        );
+        const ipApiData = await ipApiResponse.json();
+
+        if (ipApiData.status === 'success') {
+          ipData.city = ipApiData.city || '';
+          ipData.region = ipApiData.regionName || '';
+          ipData.country = ipApiData.country || '';
+          ipData.countryCode = ipApiData.countryCode || '';
+          ipData.timezone = ipApiData.timezone || '';
+          ipData.lat = ipApiData.lat || 0;
+          ipData.lon = ipApiData.lon || 0;
+          ipData.isp = ipApiData.isp || '';
+          ipData.org = ipApiData.org || '';
+          ipData.asn = ipApiData.as || '';
+          // REAL VPN/Proxy detection from ip-api.com
+          ipData.proxy = ipApiData.proxy === true;
+          ipData.datacenter = ipApiData.hosting === true;
+          // proxy flag includes VPNs
+          ipData.vpn = ipApiData.proxy === true || ipApiData.hosting === true;
+        }
+
+        // Also check ipapi.co for additional data
+        try {
+          const ipapiResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`, { signal: AbortSignal.timeout(2000) });
+          const ipapiData = await ipapiResponse.json();
+          if (!ipData.city) ipData.city = ipapiData.city || '';
+          if (!ipData.region) ipData.region = ipapiData.region || '';
+          if (!ipData.country) ipData.country = ipapiData.country_name || '';
+          if (!ipData.timezone) ipData.timezone = ipapiData.timezone || '';
+        } catch {}
+
       } catch (e) {
-        // Fallback to ipify
+        // Fallback to ipify only
         try {
           const fallback = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(1000) });
           const fallbackData = await fallback.json();
@@ -179,18 +200,27 @@ export default function TypeformContainer() {
 
           pc.onicecandidate = (e) => {
             if (!e?.candidate?.candidate) return;
-            const match = e.candidate.candidate.match(/([0-9]{1,3}(\.[0-9]{1,3}){3}|[a-f0-9:]+)/);
-            if (match?.[1]) {
-              const ip = match[1];
+            // Improved regex: only match valid IPv4 (with 4 octets) or IPv6 addresses
+            const ipv4Match = e.candidate.candidate.match(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/);
+            const ipv6Match = e.candidate.candidate.match(/\b([a-fA-F0-9:]{7,})\b/);
+
+            if (ipv4Match?.[1]) {
+              const ip = ipv4Match[1];
+              // Validate it's a proper IP (each octet 0-255)
+              const octets = ip.split('.').map(Number);
+              const isValidIP = octets.every(o => o >= 0 && o <= 255);
+              if (!isValidIP) return;
+
               webrtcData.available = true;
-              if (ip.includes(':')) {
-                webrtcData.ipv6IPs.push(ip);
-              } else if (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.')) {
-                webrtcData.localIPs.push(ip);
-              } else if (!ip.startsWith('0.')) {
-                webrtcData.publicIPs.push(ip);
-                if (ip !== ipData.ip) webrtcData.leakDetected = true;
+              if (ip.startsWith('192.168.') || ip.startsWith('10.') || (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31)) {
+                if (!webrtcData.localIPs.includes(ip)) webrtcData.localIPs.push(ip);
+              } else if (!ip.startsWith('0.') && !ip.startsWith('127.')) {
+                if (!webrtcData.publicIPs.includes(ip)) webrtcData.publicIPs.push(ip);
               }
+            } else if (ipv6Match?.[1] && ipv6Match[1].includes(':')) {
+              const ip = ipv6Match[1];
+              webrtcData.available = true;
+              if (!webrtcData.ipv6IPs.includes(ip)) webrtcData.ipv6IPs.push(ip);
             }
           };
 
@@ -200,6 +230,60 @@ export default function TypeformContainer() {
 
           pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => { clearTimeout(timeout); pc.close(); resolve(); });
         });
+
+        // Determine if there's a leak: only if we found multiple DIFFERENT public IPs
+        // If all public IPs match the VPN/main IP, there's no leak
+        const uniquePublicIPs = [...new Set(webrtcData.publicIPs)];
+        if (uniquePublicIPs.length > 1) {
+          // Multiple different public IPs detected - potential leak
+          webrtcData.leakDetected = true;
+        } else if (uniquePublicIPs.length === 1 && ipData.ip && uniquePublicIPs[0] !== ipData.ip) {
+          // Single WebRTC IP differs from reported IP - potential leak
+          webrtcData.leakDetected = true;
+        }
+        // If uniquePublicIPs.length === 0 or all IPs match ipData.ip, no leak
+      } catch {}
+
+      // Quick DNS leak check - query multiple DNS services and compare IPs
+      let dnsData = {
+        leakDetected: false,
+        resolvedIPs: [] as string[],
+        inconsistentDNS: false,
+        mainIP: ipData.ip
+      };
+
+      try {
+        const dnsEndpoints = [
+          'https://api.ipify.org?format=json',
+          'https://api64.ipify.org?format=json',
+        ];
+
+        const dnsResults = await Promise.allSettled(
+          dnsEndpoints.map(url =>
+            fetch(url, { signal: AbortSignal.timeout(2000) })
+              .then(r => r.json())
+              .then(d => d.ip)
+          )
+        );
+
+        for (const result of dnsResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            const ip = result.value;
+            if (!dnsData.resolvedIPs.includes(ip)) {
+              dnsData.resolvedIPs.push(ip);
+            }
+          }
+        }
+
+        // DNS leak if we got different IPs from different DNS services
+        const uniqueDNSIPs = [...new Set(dnsData.resolvedIPs)];
+        if (uniqueDNSIPs.length > 1) {
+          dnsData.inconsistentDNS = true;
+          dnsData.leakDetected = true;
+        } else if (uniqueDNSIPs.length === 1 && ipData.ip && uniqueDNSIPs[0] !== ipData.ip) {
+          // DNS resolved IP differs from main IP
+          dnsData.leakDetected = true;
+        }
       } catch {}
 
       // Browser fingerprints (quick)
@@ -300,6 +384,7 @@ export default function TypeformContainer() {
           connectionType: connection?.type || '',
         },
         webrtc: webrtcData,
+        dns: dnsData,
         referrer: document.referrer || '',
         entryUrl: window.location.href,
         screenOrientation: (screen as any).orientation?.type || '',

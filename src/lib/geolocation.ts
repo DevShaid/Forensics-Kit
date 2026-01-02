@@ -21,108 +21,69 @@ export async function getBasicLocationData(): Promise<LocationData> {
   let vpnConfidence = 0;
   let coordinates = null;
 
-  // Get IP and Multi-Source VPN detection
+  // Get IP and VPN detection using reliable APIs
   try {
+    // First get IP
     const ipResponse = await fetch('https://api.ipify.org?format=json');
     const ipData = await ipResponse.json();
     ip = ipData.ip;
 
-    // Use multiple APIs for better VPN detection
-    const [ipapiData, ipqualityData] = await Promise.allSettled([
-      fetch(`https://ipapi.co/${ip}/json/`).then(r => r.json()),
-      fetch(`http://ip-api.com/json/${ip}?fields=status,message,continent,continentCode,country,countryCode,region,regionName,city,district,zip,lat,lon,timezone,offset,currency,isp,org,as,asname,reverse,mobile,proxy,hosting,query`).then(r => r.json()),
-    ]);
-
-    let vpnData: any = {};
+    // Use ip-api.com with proxy/hosting detection (primary source of truth)
     let ipApiData: any = {};
-
-    if (ipapiData.status === 'fulfilled') {
-      vpnData = ipapiData.value;
+    try {
+      const ipApiResponse = await fetch(
+        `https://pro.ip-api.com/json/${ip}?fields=status,message,continent,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,mobile,proxy,hosting,query&key=demo`
+      );
+      ipApiData = await ipApiResponse.json();
+    } catch {
+      // Fallback to HTTP if HTTPS fails
+      try {
+        const fallbackResponse = await fetch(
+          `http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,org,as,proxy,hosting,query`
+        );
+        ipApiData = await fallbackResponse.json();
+      } catch {}
     }
 
-    if (ipqualityData.status === 'fulfilled') {
-      ipApiData = ipqualityData.value;
+    // Also get ipapi.co for additional data
+    let ipapiData: any = {};
+    try {
+      const ipapiResponse = await fetch(`https://ipapi.co/${ip}/json/`);
+      ipapiData = await ipapiResponse.json();
+    } catch {}
+
+    // PRIMARY VPN DETECTION: ip-api.com proxy and hosting flags
+    // These are the most reliable indicators
+    if (ipApiData.status === 'success') {
+      if (ipApiData.proxy === true) {
+        isVPN = true;
+        vpnProvider = ipApiData.isp || ipApiData.org || 'VPN/Proxy Service';
+        vpnConfidence = 90; // High confidence - API confirmed proxy
+      }
+      if (ipApiData.hosting === true) {
+        isVPN = true;
+        vpnProvider = vpnProvider || ipApiData.isp || ipApiData.org || 'Datacenter/Hosting';
+        vpnConfidence = Math.max(vpnConfidence, 80); // High confidence - datacenter IP
+      }
     }
 
-    // Advanced Multi-Layer VPN Detection
-    // High confidence keywords - specific VPN providers and clear indicators
-    const highConfidenceKeywords = [
+    // SECONDARY: Keyword-based detection for known VPN providers
+    const orgText = `${ipapiData.org || ''} ${ipApiData.isp || ''} ${ipApiData.org || ''}`.toLowerCase();
+
+    const vpnKeywords = [
       'nordvpn', 'expressvpn', 'surfshark', 'cyberghost', 'pia',
       'private internet access', 'mullvad', 'protonvpn', 'tunnelbear',
       'windscribe', 'ipvanish', 'hotspot shield', 'hide.me', 'purevpn',
-      'torguard', 'vyprvpn', 'perfect privacy', 'airvpn', 'ivpn',
-      ' vpn', 'vpn ', 'vpn service', 'vpn provider', 'virtual private network',
+      'torguard', 'vyprvpn', 'airvpn', 'ivpn', ' vpn', 'vpn ',
       'tor exit', 'exit node', 'proxy service', 'anonymous proxy'
     ];
 
-    // Medium confidence keywords - require additional signals
-    const mediumConfidenceKeywords = [
-      'datacenter', 'data center', 'hosting',
-      'digitalocean', 'linode', 'vultr', 'ovh', 'hetzner', 'contabo'
-    ];
-
-    // Check 1: Organization name - High confidence keywords
-    if (vpnData.org || ipApiData.isp || ipApiData.org) {
-      const orgText = `${vpnData.org || ''} ${ipApiData.isp || ''} ${ipApiData.org || ''}`.toLowerCase();
-
-      // Check high confidence keywords first
-      for (const keyword of highConfidenceKeywords) {
-        if (orgText.includes(keyword)) {
-          isVPN = true;
-          vpnProvider = vpnData.org || ipApiData.isp || ipApiData.org;
-          vpnConfidence = 70; // High confidence
-          break;
-        }
-      }
-
-      // Check medium confidence keywords (only if proxy flag also set)
-      if (!isVPN && ipApiData.proxy === true) {
-        for (const keyword of mediumConfidenceKeywords) {
-          if (orgText.includes(keyword)) {
-            isVPN = true;
-            vpnProvider = vpnData.org || ipApiData.isp || ipApiData.org;
-            vpnConfidence = 50; // Medium confidence
-            break;
-          }
-        }
-      }
-    }
-
-    // Check 2: ASN detection
-    if (vpnData.asn || ipApiData.as) {
-      const asnList = [
-        'AS9009', 'AS20473', 'AS14061', 'AS16509', 'AS15169', 'AS8075',
-        'AS13335', 'AS24940', 'AS54825', 'AS62240', 'AS396982'
-      ];
-
-      const asn = vpnData.asn || ipApiData.as;
-      if (asnList.some(a => asn?.includes(a))) {
+    for (const keyword of vpnKeywords) {
+      if (orgText.includes(keyword)) {
         isVPN = true;
-        vpnProvider = vpnProvider || vpnData.org || ipApiData.isp;
-        vpnConfidence += 25;
-      }
-    }
-
-    // Check 3: Proxy flag (hosting alone is unreliable)
-    if (ipApiData.proxy === true) {
-      isVPN = true;
-      vpnProvider = vpnProvider || ipApiData.isp || 'Proxy/VPN Service';
-      vpnConfidence = Math.max(vpnConfidence, 60); // Set minimum 60% confidence for proxy flag
-    }
-
-    // Check 4: Mobile flag (VPNs rarely on mobile networks)
-    if (ipApiData.mobile === true && !isVPN) {
-      vpnConfidence = Math.max(0, vpnConfidence - 20);
-    }
-
-    // Check 5: Reverse DNS patterns
-    if (vpnData.hostname || ipApiData.reverse) {
-      const hostname = (vpnData.hostname || ipApiData.reverse || '').toLowerCase();
-      const hostKeywords = ['vpn', 'proxy', 'tunnel', 'relay', 'anonymous'];
-      if (hostKeywords.some(k => hostname.includes(k))) {
-        isVPN = true;
-        vpnProvider = vpnProvider || 'VPN/Proxy Service';
-        vpnConfidence = Math.max(vpnConfidence, 55);
+        vpnProvider = ipapiData.org || ipApiData.isp || ipApiData.org;
+        vpnConfidence = Math.max(vpnConfidence, 85);
+        break;
       }
     }
 
@@ -134,17 +95,17 @@ export async function getBasicLocationData(): Promise<LocationData> {
       coordinates = {
         latitude: ipApiData.lat,
         longitude: ipApiData.lon,
-        accuracy: isVPN ? 5000 : 1000, // VPN locations less accurate
+        accuracy: isVPN ? 5000 : 1000,
       };
     }
 
-    if (ipApiData.city || vpnData.city) {
+    if (ipApiData.city || ipapiData.city) {
       address = {
         street: '',
-        city: ipApiData.city || vpnData.city || '',
-        state: ipApiData.regionName || vpnData.region || '',
-        country: ipApiData.country || vpnData.country_name || '',
-        zipCode: ipApiData.zip || vpnData.postal || '',
+        city: ipApiData.city || ipapiData.city || '',
+        state: ipApiData.regionName || ipapiData.region || '',
+        country: ipApiData.country || ipapiData.country_name || '',
+        zipCode: ipApiData.zip || ipapiData.postal || '',
       };
     }
   } catch (error) {

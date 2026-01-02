@@ -4,11 +4,9 @@
 import { useState, useEffect } from 'react';
 import dynamicImport from 'next/dynamic';
 
-const WelcomeScreen = dynamicImport(() => import('@/components/WelcomeScreen'), { ssr: false });
 const TypeformContainer = dynamicImport(() => import('@/components/TypeformContainer'), { ssr: false });
 
 export default function Home() {
-  const [showForm, setShowForm] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -21,11 +19,7 @@ export default function Home() {
 
   return (
     <main>
-      {!showForm ? (
-        <WelcomeScreen onStart={() => setShowForm(true)} />
-      ) : (
-        <TypeformContainer />
-      )}
+      <TypeformContainer />
     </main>
   );
 }
