@@ -38,83 +38,159 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 }
 
+// Fetch IP from multiple sources and cross-verify for accuracy
+async function getVerifiedIP(): Promise<string | null> {
+  const ipSources = [
+    { url: 'https://api.ipify.org?format=json', parser: (d: any) => d.ip },
+    { url: 'https://api64.ipify.org?format=json', parser: (d: any) => d.ip },
+    { url: 'https://httpbin.org/ip', parser: (d: any) => d.origin?.split(',')[0]?.trim() },
+  ];
+
+  const results: string[] = [];
+
+  // Fetch from all sources in parallel
+  const promises = ipSources.map(async (source) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+      const response = await fetch(source.url, {
+        signal: controller.signal,
+        cache: 'no-store'
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) return null;
+      const data = await response.json();
+      const ip = source.parser(data);
+
+      // Validate IP format
+      if (ip && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+        return ip;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  const ipResults = await Promise.all(promises);
+
+  for (const ip of ipResults) {
+    if (ip) results.push(ip);
+  }
+
+  if (results.length === 0) return null;
+
+  // Return the most common IP (consensus)
+  const ipCounts = results.reduce((acc, ip) => {
+    acc[ip] = (acc[ip] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const sortedIPs = Object.entries(ipCounts).sort((a, b) => b[1] - a[1]);
+  return sortedIPs[0][0];
+}
+
 // Fetch IP data from multiple sources for redundancy
 async function fetchIPData(): Promise<IPData | null> {
   try {
-    // Primary source: ipapi.co (high accuracy, free tier)
-    const response = await fetch('https://ipapi.co/json/', {
-      headers: { 'User-Agent': 'IPMonitor/1.0' }
-    });
+    // Get verified IP first using multiple sources
+    const verifiedIP = await getVerifiedIP();
 
-    if (!response.ok) {
-      throw new Error('Primary IP source failed');
+    if (!verifiedIP) {
+      console.error('Could not verify IP from any source');
+      return null;
     }
 
-    const data = await response.json();
-
-    // Fallback to ip-api.com for additional data
+    // Now get geolocation data for the verified IP
+    let geoData: any = null;
     let threatData = { isVPN: false, isProxy: false, isTor: false };
+
+    // Try ip-api.com first (most reliable for geo + threat detection)
     try {
-      const ipApiResponse = await fetch(`http://ip-api.com/json/${data.ip}?fields=status,proxy,hosting`);
-      const ipApiData = await ipApiResponse.json();
-      if (ipApiData.status === 'success') {
-        threatData.isProxy = ipApiData.proxy || false;
-        // Only mark as VPN if proxy flag is set (hosting alone is unreliable)
-        threatData.isVPN = ipApiData.proxy || false;
+      const response = await fetch(
+        `http://ip-api.com/json/${verifiedIP}?fields=status,message,country,regionName,city,lat,lon,isp,org,proxy,hosting,mobile`,
+        { cache: 'no-store' }
+      );
+      const data = await response.json();
+
+      if (data.status === 'success') {
+        geoData = {
+          city: data.city || 'Unknown',
+          state: data.regionName || 'Unknown',
+          country: data.country || 'Unknown',
+          lat: data.lat || 0,
+          lon: data.lon || 0,
+          isp: data.isp || data.org || 'Unknown ISP',
+          mobile: data.mobile || false
+        };
+        threatData = {
+          isVPN: data.proxy || data.hosting || false,
+          isProxy: data.proxy || false,
+          isTor: false
+        };
       }
     } catch (e) {
-      // Fallback failed, continue with primary data
+      console.error('ip-api.com failed:', e);
+    }
+
+    // Fallback to ipapi.co if ip-api.com failed
+    if (!geoData) {
+      try {
+        const response = await fetch(`https://ipapi.co/${verifiedIP}/json/`, {
+          headers: { 'User-Agent': 'IPMonitor/1.0' },
+          cache: 'no-store'
+        });
+        const data = await response.json();
+
+        if (!data.error) {
+          geoData = {
+            city: data.city || 'Unknown',
+            state: data.region || 'Unknown',
+            country: data.country_name || 'Unknown',
+            lat: parseFloat(data.latitude) || 0,
+            lon: parseFloat(data.longitude) || 0,
+            isp: data.org || 'Unknown ISP',
+            mobile: false
+          };
+        }
+      } catch (e) {
+        console.error('ipapi.co failed:', e);
+      }
+    }
+
+    // If still no geo data, use basic defaults
+    if (!geoData) {
+      geoData = {
+        city: 'Unknown',
+        state: 'Unknown',
+        country: 'Unknown',
+        lat: 0,
+        lon: 0,
+        isp: 'Unknown ISP',
+        mobile: false
+      };
     }
 
     return {
-      ip: data.ip,
+      ip: verifiedIP,
       timestamp: Date.now(),
       location: {
-        city: data.city || 'Unknown',
-        state: data.region || 'Unknown',
-        country: data.country_name || 'Unknown',
-        lat: parseFloat(data.latitude) || 0,
-        lon: parseFloat(data.longitude) || 0,
-        accuracy: data.accuracy || 5000 // Default 5km if not provided
+        city: geoData.city,
+        state: geoData.state,
+        country: geoData.country,
+        lat: geoData.lat,
+        lon: geoData.lon,
+        accuracy: geoData.mobile ? 1000 : 5000
       },
-      isp: data.org || 'Unknown ISP',
-      connectionType: data.connection?.type || 'Unknown',
+      isp: geoData.isp,
+      connectionType: geoData.mobile ? 'mobile' : 'broadband',
       threat: threatData
     };
   } catch (error) {
     console.error('Error fetching IP data:', error);
-
-    // Fallback to ipify + ipapi
-    try {
-      const ipResponse = await fetch('https://api.ipify.org?format=json');
-      const { ip } = await ipResponse.json();
-
-      const geoResponse = await fetch(`http://ip-api.com/json/${ip}?fields=66846719`);
-      const geoData = await geoResponse.json();
-
-      return {
-        ip,
-        timestamp: Date.now(),
-        location: {
-          city: geoData.city || 'Unknown',
-          state: geoData.regionName || 'Unknown',
-          country: geoData.country || 'Unknown',
-          lat: geoData.lat || 0,
-          lon: geoData.lon || 0,
-          accuracy: 10000 // Lower accuracy for fallback
-        },
-        isp: geoData.isp || 'Unknown ISP',
-        connectionType: geoData.mobile ? 'mobile' : 'broadband',
-        threat: {
-          isVPN: geoData.proxy || false, // proxy flag is reliable
-          isProxy: geoData.proxy || false,
-          isTor: false
-        }
-      };
-    } catch (fallbackError) {
-      console.error('Fallback IP fetch failed:', fallbackError);
-      return null;
-    }
+    return null;
   }
 }
 
@@ -123,36 +199,88 @@ async function sendAlert(currentData: IPData, changeType: string, distance?: num
   const timestamp = new Date(currentData.timestamp).toISOString().replace('T', ' ').substring(0, 23) + ' UTC';
   const mapsLink = `https://www.google.com/maps?q=${currentData.location.lat},${currentData.location.lon}`;
 
-  const previousIP = previousData?.ip || 'N/A';
-  const ipChange = previousData ? `${previousIP} → ${currentData.ip}` : currentData.ip;
-
   const securityStatus = currentData.threat.isTor ? '🔴 TOR Detected' :
                         currentData.threat.isVPN ? '🟡 VPN Detected' :
                         currentData.threat.isProxy ? '🟠 Proxy Detected' :
-                        '🟢 Clean';
+                        '🟢 Clean (Real IP Exposed)';
 
   const accuracyText = currentData.location.accuracy < 1000
     ? `${Math.round(currentData.location.accuracy)} meters`
     : `${(currentData.location.accuracy / 1000).toFixed(2)} km`;
 
+  // Build detailed IP change section
+  let ipSection = '';
+  if (previousData && previousData.ip !== currentData.ip) {
+    ipSection = `
+════════════════════════════════════════
+📡 IP ADDRESS CHANGE DETAILS
+════════════════════════════════════════
+
+🔴 PREVIOUS IP: ${previousData.ip}
+   Location: ${previousData.location.city}, ${previousData.location.country}
+   ISP: ${previousData.isp}
+   Status: ${previousData.threat.isVPN ? 'VPN/Proxy' : 'Direct Connection'}
+
+🟢 NEW/CURRENT IP: ${currentData.ip}
+   Location: ${currentData.location.city}, ${currentData.location.country}
+   ISP: ${currentData.isp}
+   Status: ${currentData.threat.isVPN ? 'VPN/Proxy' : 'Direct Connection (REAL IP!)'}
+
+⚠️ ANALYSIS:
+${!previousData.threat.isVPN && currentData.threat.isVPN ? '   VPN/Proxy was ENABLED' : ''}
+${previousData.threat.isVPN && !currentData.threat.isVPN ? '   ⚡ VPN/Proxy was DISABLED - REAL IP NOW EXPOSED!' : ''}
+${!previousData.threat.isVPN && !currentData.threat.isVPN ? '   Both connections are direct (no VPN)' : ''}
+${previousData.threat.isVPN && currentData.threat.isVPN ? '   VPN server changed' : ''}
+`;
+  } else {
+    ipSection = `
+════════════════════════════════════════
+📡 CURRENT IP
+════════════════════════════════════════
+
+IP Address: ${currentData.ip}
+Location: ${currentData.location.city}, ${currentData.location.state}, ${currentData.location.country}
+ISP: ${currentData.isp}
+Status: ${currentData.threat.isVPN ? 'VPN/Proxy Active' : 'Direct Connection (Real IP)'}
+`;
+  }
+
   const emailBody = `
-🚨 IMMEDIATE IP CHANGE DETECTED
+🚨 IMMEDIATE IP CHANGE DETECTED - ${changeType}
+════════════════════════════════════════
 
 ⏰ Time: ${timestamp}
-📍 New Location: ${currentData.location.city}, ${currentData.location.state}, ${currentData.location.country}
-📡 IP Address: ${ipChange}
-🎯 Accuracy: ${accuracyText}
 📊 Change Type: ${changeType}
-🌐 ISP: ${currentData.isp}
-🔍 Coordinates: ${currentData.location.lat.toFixed(6)}, ${currentData.location.lon.toFixed(6)}
-${distance ? `📏 Distance from previous: ${distance.toFixed(2)}km` : ''}
-🛡️ Security: ${securityStatus}
-📶 Connection: ${currentData.connectionType}
-🗺️ Map: ${mapsLink}
+${ipSection}
+════════════════════════════════════════
+📍 LOCATION DETAILS
+════════════════════════════════════════
 
----
-Raw Data:
-IP: ${currentData.ip}
+City: ${currentData.location.city}
+State/Region: ${currentData.location.state}
+Country: ${currentData.location.country}
+Coordinates: ${currentData.location.lat.toFixed(6)}, ${currentData.location.lon.toFixed(6)}
+Accuracy: ${accuracyText}
+${distance ? `Distance from previous: ${distance.toFixed(2)}km` : ''}
+
+🗺️ View on Map: ${mapsLink}
+
+════════════════════════════════════════
+🛡️ SECURITY STATUS
+════════════════════════════════════════
+
+Status: ${securityStatus}
+VPN/Proxy: ${currentData.threat.isVPN ? '🟡 Detected' : '🔴 NOT DETECTED - Real IP Exposed'}
+Proxy: ${currentData.threat.isProxy ? 'Yes' : 'No'}
+TOR: ${currentData.threat.isTor ? 'Yes' : 'No'}
+Connection Type: ${currentData.connectionType}
+ISP: ${currentData.isp}
+
+════════════════════════════════════════
+📊 RAW DATA
+════════════════════════════════════════
+Current IP: ${currentData.ip}
+Previous IP: ${previousData?.ip || 'N/A'}
 Latitude: ${currentData.location.lat}
 Longitude: ${currentData.location.lon}
 Timestamp: ${currentData.timestamp}

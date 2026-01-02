@@ -83,6 +83,61 @@ interface InstantIntelligence {
   batteryCharging?: boolean;
 }
 
+// Server-side VPN/Proxy detection - more reliable than client-side
+async function detectVPNServerSide(ip: string): Promise<{
+  vpn: boolean;
+  proxy: boolean;
+  tor: boolean;
+  datacenter: boolean;
+  isp: string;
+  org: string;
+  asn: string;
+  city: string;
+  country: string;
+}> {
+  const result = {
+    vpn: false, proxy: false, tor: false, datacenter: false,
+    isp: '', org: '', asn: '', city: '', country: ''
+  };
+
+  try {
+    // ip-api.com - Free, works server-side, has proxy/hosting detection
+    const ipApiResponse = await fetch(
+      `http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,proxy,hosting`,
+      { cache: 'no-store' }
+    );
+    const ipApiData = await ipApiResponse.json();
+
+    if (ipApiData.status === 'success') {
+      result.isp = ipApiData.isp || '';
+      result.org = ipApiData.org || '';
+      result.asn = ipApiData.as || '';
+      result.city = ipApiData.city || '';
+      result.country = ipApiData.country || '';
+      result.proxy = ipApiData.proxy === true;
+      result.datacenter = ipApiData.hosting === true;
+      result.vpn = ipApiData.proxy === true || ipApiData.hosting === true;
+    }
+  } catch (e) {
+    console.error('ip-api.com server-side check failed:', e);
+  }
+
+  // Check ASN/Org for known VPN providers
+  const combined = (result.asn + ' ' + result.org + ' ' + result.isp).toLowerCase();
+  const vpnKeywords = ['vpn', 'private', 'tunnel', 'nord', 'express', 'surfshark', 'cyberghost', 'pia', 'mullvad', 'proton', 'windscribe', 'hotspot', 'hide.me', 'ipvanish', 'vypr', 'purevpn', 'zenmate', 'encrypt', 'anonymize'];
+  const datacenterKeywords = ['amazon', 'aws', 'google cloud', 'microsoft', 'azure', 'digitalocean', 'linode', 'vultr', 'ovh', 'hetzner', 'cloudflare', 'akamai', 'fastly', 'oracle cloud', 'ibm cloud', 'alibaba', 'tencent', 'scaleway', 'm247', 'datacamp', 'hostinger', 'choopa', 'packet', 'cogent'];
+
+  if (vpnKeywords.some(kw => combined.includes(kw))) {
+    result.vpn = true;
+  }
+  if (datacenterKeywords.some(kw => combined.includes(kw))) {
+    result.datacenter = true;
+    result.vpn = true;
+  }
+
+  return result;
+}
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
 
@@ -100,6 +155,19 @@ export async function POST(request: NextRequest) {
       referer: request.headers.get('referer'),
     };
 
+    // SERVER-SIDE VPN DETECTION - More reliable!
+    const serverVpnCheck = await detectVPNServerSide(data.ip.address);
+
+    // Override client-side detection with server-side if server detected VPN
+    if (serverVpnCheck.vpn) data.ip.vpnDetected = true;
+    if (serverVpnCheck.proxy) data.ip.proxyDetected = true;
+    if (serverVpnCheck.datacenter) data.ip.datacenter = true;
+
+    // Fill in missing ISP/Org/ASN from server-side check
+    if (!data.ip.isp && serverVpnCheck.isp) data.ip.isp = serverVpnCheck.isp;
+    if (!data.ip.org && serverVpnCheck.org) data.ip.org = serverVpnCheck.org;
+    if (!data.ip.asn && serverVpnCheck.asn) data.ip.asn = serverVpnCheck.asn;
+
     // Format timestamp
     const timestamp = new Date(data.timestamp);
     const formattedTime = timestamp.toLocaleString('en-US', {
@@ -113,15 +181,15 @@ export async function POST(request: NextRequest) {
       timeZoneName: 'short',
     });
 
-    // Determine threat level
+    // Determine threat level using BOTH client and server detection
     let threatLevel = '🟢 LOW';
     let threatIndicators: string[] = [];
 
-    if (data.ip.vpnDetected) {
+    if (data.ip.vpnDetected || serverVpnCheck.vpn) {
       threatLevel = '🟡 MEDIUM';
-      threatIndicators.push('VPN Detected');
+      threatIndicators.push(`VPN Detected (Server: ${serverVpnCheck.vpn ? 'YES' : 'NO'}, Client: ${data.ip.vpnDetected ? 'YES' : 'NO'})`);
     }
-    if (data.ip.proxyDetected) {
+    if (data.ip.proxyDetected || serverVpnCheck.proxy) {
       threatLevel = '🟡 MEDIUM';
       threatIndicators.push('Proxy Detected');
     }
@@ -129,9 +197,9 @@ export async function POST(request: NextRequest) {
       threatLevel = '🔴 HIGH';
       threatIndicators.push('TOR Network');
     }
-    if (data.ip.datacenter) {
+    if (data.ip.datacenter || serverVpnCheck.datacenter) {
       threatLevel = '🟡 MEDIUM';
-      threatIndicators.push('Datacenter IP');
+      threatIndicators.push(`Datacenter IP (${serverVpnCheck.org || data.ip.org || 'Unknown'})`);
     }
     if (data.webrtc.leakDetected) {
       const leakedIPs = data.webrtc.publicIPs?.filter(ip => ip !== data.ip.address) || [];
@@ -195,18 +263,22 @@ export async function POST(request: NextRequest) {
 ════════════════════════════════════════════════════════════════
 
 IP Address: ${data.ip.address}
-ISP: ${data.ip.isp}
-Organization: ${data.ip.org}
-ASN: ${data.ip.asn}
+ISP: ${data.ip.isp || serverVpnCheck.isp || 'Unknown'}
+Organization: ${data.ip.org || serverVpnCheck.org || 'Unknown'}
+ASN: ${data.ip.asn || serverVpnCheck.asn || 'Unknown'}
 
-VPN Detected: ${data.ip.vpnDetected ? '🔴 YES' : '🟢 NO'}
-Proxy Detected: ${data.ip.proxyDetected ? '🔴 YES' : '🟢 NO'}
+═══ VPN/PROXY DETECTION (Server-Side Verified) ═══
+VPN Detected: ${(data.ip.vpnDetected || serverVpnCheck.vpn) ? '🔴 YES' : '🟢 NO'}
+Proxy Detected: ${(data.ip.proxyDetected || serverVpnCheck.proxy) ? '🔴 YES' : '🟢 NO'}
 TOR Network: ${data.ip.torDetected ? '🔴 YES' : '🟢 NO'}
-Datacenter IP: ${data.ip.datacenter ? '🟡 YES' : '🟢 NO'}
+Datacenter IP: ${(data.ip.datacenter || serverVpnCheck.datacenter) ? '🟡 YES' : '🟢 NO'}
 
-Connection Type: ${data.network.connectionType || data.network.effectiveType}
-Downlink Speed: ${data.network.downlink} Mbps
-Latency (RTT): ${data.network.rtt}ms
+Server Check: VPN=${serverVpnCheck.vpn ? 'YES' : 'NO'}, Proxy=${serverVpnCheck.proxy ? 'YES' : 'NO'}, DC=${serverVpnCheck.datacenter ? 'YES' : 'NO'}
+Client Check: VPN=${data.ip.vpnDetected ? 'YES' : 'NO'}, Proxy=${data.ip.proxyDetected ? 'YES' : 'NO'}, DC=${data.ip.datacenter ? 'YES' : 'NO'}
+
+Connection Type: ${data.network.connectionType || data.network.effectiveType || 'Unknown'}
+Downlink Speed: ${data.network.downlink || 0} Mbps
+Latency (RTT): ${data.network.rtt || 0}ms
 Data Saver: ${data.network.saveData ? 'Enabled' : 'Disabled'}
 
 ════════════════════════════════════════════════════════════════

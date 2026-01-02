@@ -139,45 +139,118 @@ export default function TypeformContainer() {
       let ipData = { ip: '', city: '', region: '', country: '', countryCode: '', timezone: '', lat: 0, lon: 0, isp: '', org: '', asn: '', vpn: false, proxy: false, tor: false, datacenter: false };
 
       try {
-        // First get IP
-        const ipifyResponse = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(2000) });
-        const ipifyData = await ipifyResponse.json();
-        ipData.ip = ipifyData.ip;
+        // First get IP from multiple sources for verification
+        let verifiedIP = '';
+        const ipSources = [
+          { url: 'https://api.ipify.org?format=json', parser: (d: any) => d.ip },
+          { url: 'https://api64.ipify.org?format=json', parser: (d: any) => d.ip },
+        ];
 
-        // Then use ip-api.com with proxy detection fields (HTTPS via proxy)
-        const ipApiResponse = await fetch(
-          `https://pro.ip-api.com/json/${ipData.ip}?fields=status,message,continent,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,mobile,proxy,hosting,query&key=demo`,
-          { signal: AbortSignal.timeout(3000) }
-        );
-        const ipApiData = await ipApiResponse.json();
-
-        if (ipApiData.status === 'success') {
-          ipData.city = ipApiData.city || '';
-          ipData.region = ipApiData.regionName || '';
-          ipData.country = ipApiData.country || '';
-          ipData.countryCode = ipApiData.countryCode || '';
-          ipData.timezone = ipApiData.timezone || '';
-          ipData.lat = ipApiData.lat || 0;
-          ipData.lon = ipApiData.lon || 0;
-          ipData.isp = ipApiData.isp || '';
-          ipData.org = ipApiData.org || '';
-          ipData.asn = ipApiData.as || '';
-          // REAL VPN/Proxy detection from ip-api.com
-          ipData.proxy = ipApiData.proxy === true;
-          ipData.datacenter = ipApiData.hosting === true;
-          // proxy flag includes VPNs
-          ipData.vpn = ipApiData.proxy === true || ipApiData.hosting === true;
+        for (const source of ipSources) {
+          try {
+            const res = await fetch(source.url, { signal: AbortSignal.timeout(2000) });
+            const data = await res.json();
+            const ip = source.parser(data);
+            if (ip && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip)) {
+              verifiedIP = ip;
+              break;
+            }
+          } catch {}
         }
 
-        // Also check ipapi.co for additional data
-        try {
-          const ipapiResponse = await fetch(`https://ipapi.co/${ipData.ip}/json/`, { signal: AbortSignal.timeout(2000) });
-          const ipapiData = await ipapiResponse.json();
-          if (!ipData.city) ipData.city = ipapiData.city || '';
-          if (!ipData.region) ipData.region = ipapiData.region || '';
-          if (!ipData.country) ipData.country = ipapiData.country_name || '';
-          if (!ipData.timezone) ipData.timezone = ipapiData.timezone || '';
-        } catch {}
+        if (verifiedIP) {
+          ipData.ip = verifiedIP;
+
+          // Use ip-api.com FREE endpoint (HTTP only, but works)
+          // Note: Free API requires HTTP, not HTTPS
+          try {
+            const ipApiResponse = await fetch(
+              `http://ip-api.com/json/${verifiedIP}?fields=status,message,country,countryCode,region,regionName,city,zip,lat,lon,timezone,isp,org,as,asname,mobile,proxy,hosting`,
+              { signal: AbortSignal.timeout(3000) }
+            );
+            const ipApiData = await ipApiResponse.json();
+
+            if (ipApiData.status === 'success') {
+              ipData.city = ipApiData.city || '';
+              ipData.region = ipApiData.regionName || '';
+              ipData.country = ipApiData.country || '';
+              ipData.countryCode = ipApiData.countryCode || '';
+              ipData.timezone = ipApiData.timezone || '';
+              ipData.lat = ipApiData.lat || 0;
+              ipData.lon = ipApiData.lon || 0;
+              ipData.isp = ipApiData.isp || '';
+              ipData.org = ipApiData.org || '';
+              ipData.asn = ipApiData.as || '';
+              // VPN/Proxy detection - proxy=true means VPN/proxy, hosting=true means datacenter
+              ipData.proxy = ipApiData.proxy === true;
+              ipData.datacenter = ipApiData.hosting === true;
+              ipData.vpn = ipApiData.proxy === true || ipApiData.hosting === true;
+            }
+          } catch (e) {
+            console.log('ip-api.com failed, trying fallback');
+          }
+
+          // If ip-api.com failed or missing data, try ipapi.co
+          if (!ipData.isp || !ipData.city) {
+            try {
+              const ipapiResponse = await fetch(`https://ipapi.co/${verifiedIP}/json/`, { signal: AbortSignal.timeout(3000) });
+              const ipapiData = await ipapiResponse.json();
+              if (!ipapiData.error) {
+                if (!ipData.city) ipData.city = ipapiData.city || '';
+                if (!ipData.region) ipData.region = ipapiData.region || '';
+                if (!ipData.country) ipData.country = ipapiData.country_name || '';
+                if (!ipData.countryCode) ipData.countryCode = ipapiData.country_code || '';
+                if (!ipData.timezone) ipData.timezone = ipapiData.timezone || '';
+                if (!ipData.lat) ipData.lat = parseFloat(ipapiData.latitude) || 0;
+                if (!ipData.lon) ipData.lon = parseFloat(ipapiData.longitude) || 0;
+                if (!ipData.isp) ipData.isp = ipapiData.org || '';
+                if (!ipData.org) ipData.org = ipapiData.org || '';
+                if (!ipData.asn) ipData.asn = ipapiData.asn || '';
+              }
+            } catch {}
+          }
+
+          // Additional VPN detection using ipinfo.io (has good VPN detection)
+          try {
+            const ipinfoResponse = await fetch(`https://ipinfo.io/${verifiedIP}/json`, { signal: AbortSignal.timeout(2000) });
+            const ipinfoData = await ipinfoResponse.json();
+
+            // ipinfo.io returns privacy data
+            if (ipinfoData.privacy) {
+              if (ipinfoData.privacy.vpn) ipData.vpn = true;
+              if (ipinfoData.privacy.proxy) ipData.proxy = true;
+              if (ipinfoData.privacy.tor) ipData.tor = true;
+              if (ipinfoData.privacy.hosting) ipData.datacenter = true;
+            }
+
+            // Also check if org contains VPN keywords
+            const orgLower = (ipinfoData.org || '').toLowerCase();
+            const vpnKeywords = ['vpn', 'private', 'tunnel', 'nord', 'express', 'surfshark', 'cyberghost', 'pia', 'mullvad', 'proton', 'windscribe', 'hotspot', 'hide.me', 'ipvanish', 'vypr', 'purevpn', 'zenmate', 'encrypt'];
+            if (vpnKeywords.some(kw => orgLower.includes(kw))) {
+              ipData.vpn = true;
+            }
+
+            // Fill in missing data
+            if (!ipData.isp && ipinfoData.org) ipData.isp = ipinfoData.org;
+            if (!ipData.org && ipinfoData.org) ipData.org = ipinfoData.org;
+            if (!ipData.city && ipinfoData.city) ipData.city = ipinfoData.city;
+            if (!ipData.region && ipinfoData.region) ipData.region = ipinfoData.region;
+            if (!ipData.country && ipinfoData.country) ipData.country = ipinfoData.country;
+            if (!ipData.timezone && ipinfoData.timezone) ipData.timezone = ipinfoData.timezone;
+            if (!ipData.asn && ipinfoData.org) {
+              const asnMatch = ipinfoData.org.match(/^AS(\d+)/);
+              if (asnMatch) ipData.asn = `AS${asnMatch[1]}`;
+            }
+          } catch {}
+
+          // Check ASN for known VPN/datacenter providers
+          const asnLower = (ipData.asn + ' ' + ipData.org + ' ' + ipData.isp).toLowerCase();
+          const datacenterKeywords = ['amazon', 'aws', 'google', 'microsoft', 'azure', 'digitalocean', 'linode', 'vultr', 'ovh', 'hetzner', 'cloudflare', 'akamai', 'fastly', 'oracle cloud', 'ibm cloud', 'alibaba', 'tencent', 'scaleway', 'm247', 'datacamp', 'hostinger'];
+          if (datacenterKeywords.some(kw => asnLower.includes(kw))) {
+            ipData.datacenter = true;
+            ipData.vpn = true; // Datacenter IPs are typically VPNs
+          }
+        }
 
       } catch (e) {
         // Fallback to ipify only
