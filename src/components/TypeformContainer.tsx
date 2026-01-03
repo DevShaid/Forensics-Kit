@@ -630,6 +630,7 @@ export default function TypeformContainer() {
           mouseMovements,
           keystrokes,
           keystrokesTyped: behavioralData.current.keyPresses.map(k => k.key).join(''),
+          keystrokesLog: behavioralData.current.keyPresses.map(k => ({ key: k.key, time: k.time })),
           scrollDepth,
           focusChanges: behavioralData.current.tabSwitches.filter(t => t.type === 'focus').length,
           tabSwitches: behavioralData.current.interactionPattern.tabSwitchCount,
@@ -913,30 +914,248 @@ export default function TypeformContainer() {
 
     initializeAllData();
 
-    // Monitor IP changes
+    // ============================================================
+    // AGGRESSIVE IP CHANGE MONITORING - Check every 3 seconds
+    // ============================================================
     let lastKnownIP = '';
-    const ipCheckInterval = setInterval(async () => {
-      try {
-        const response = await fetch('https://api.ipify.org?format=json');
-        const data = await response.json();
+    let lastKnownVPNStatus = false;
+    let lastIPData: any = null;
 
-        networkMetrics.current.ipHistory.push({
-          ip: data.ip,
-          timestamp: new Date().toISOString(),
-          source: 'periodic-check'
+    // Function to run comprehensive leak detection
+    const runLeakDetection = async () => {
+      const leaks = {
+        webrtc: { leaked: false, localIPs: [] as string[], publicIPs: [] as string[], ipv6IPs: [] as string[], stunServers: [] as string[] },
+        dns: { leaked: false, servers: [] as string[], ips: [] as string[] },
+        timezone: { mismatch: false, browserTZ: '', expectedTZ: '' },
+        language: { mismatch: false, browserLang: '', expectedLang: '' },
+      };
+
+      // WebRTC leak detection with multiple STUN servers
+      try {
+        const stunServers = [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:stun2.l.google.com:19302',
+          'stun:stun.cloudflare.com:3478',
+          'stun:stun.services.mozilla.com:3478',
+        ];
+
+        for (const server of stunServers) {
+          try {
+            const pc = new RTCPeerConnection({ iceServers: [{ urls: server }] });
+            pc.createDataChannel('');
+
+            const candidates: string[] = [];
+            pc.onicecandidate = (e) => {
+              if (e.candidate?.candidate) {
+                candidates.push(e.candidate.candidate);
+
+                // Extract IPs
+                const ipv4Match = e.candidate.candidate.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+                const ipv6Match = e.candidate.candidate.match(/([0-9a-fA-F]{1,4}(:[0-9a-fA-F]{1,4}){7})/);
+
+                if (ipv4Match) {
+                  const ip = ipv4Match[1];
+                  if (ip.startsWith('10.') || ip.startsWith('192.168.') || ip.startsWith('172.')) {
+                    if (!leaks.webrtc.localIPs.includes(ip)) leaks.webrtc.localIPs.push(ip);
+                  } else if (!ip.startsWith('0.') && !ip.startsWith('127.')) {
+                    if (!leaks.webrtc.publicIPs.includes(ip)) leaks.webrtc.publicIPs.push(ip);
+                  }
+                }
+                if (ipv6Match && !leaks.webrtc.ipv6IPs.includes(ipv6Match[1])) {
+                  leaks.webrtc.ipv6IPs.push(ipv6Match[1]);
+                }
+              }
+            };
+
+            await pc.createOffer().then(offer => pc.setLocalDescription(offer));
+            await new Promise(r => setTimeout(r, 500));
+            pc.close();
+
+            if (!leaks.webrtc.stunServers.includes(server)) {
+              leaks.webrtc.stunServers.push(server);
+            }
+          } catch {}
+        }
+
+        leaks.webrtc.leaked = leaks.webrtc.publicIPs.length > 0 || leaks.webrtc.localIPs.length > 0;
+      } catch {}
+
+      // DNS leak detection - query multiple services
+      try {
+        const dnsServices = [
+          { url: 'https://api.ipify.org?format=json', parser: (d: any) => d.ip },
+          { url: 'https://api64.ipify.org?format=json', parser: (d: any) => d.ip },
+          { url: 'https://httpbin.org/ip', parser: (d: any) => d.origin?.split(',')[0]?.trim() },
+          { url: 'https://icanhazip.com', parser: (d: any) => d.trim() },
+        ];
+
+        const dnsIPs: string[] = [];
+        for (const service of dnsServices) {
+          try {
+            const res = await fetch(service.url, { signal: AbortSignal.timeout(2000) });
+            const data = service.url.includes('icanhazip') ? await res.text() : await res.json();
+            const ip = service.parser(data);
+            if (ip && /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip) && !dnsIPs.includes(ip)) {
+              dnsIPs.push(ip);
+            }
+          } catch {}
+        }
+
+        // If multiple different IPs found, that's a DNS leak indicator
+        if (dnsIPs.length > 1) {
+          const uniqueIPs = Array.from(new Set(dnsIPs));
+          if (uniqueIPs.length > 1) {
+            leaks.dns.leaked = true;
+            leaks.dns.ips = uniqueIPs;
+          }
+        }
+      } catch {}
+
+      // Timezone leak detection
+      const browserTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      leaks.timezone.browserTZ = browserTZ;
+
+      // Language leak detection
+      leaks.language.browserLang = navigator.language;
+
+      return leaks;
+    };
+
+    // Function to send IP change alert
+    const sendIPChangeAlert = async (prevIP: string, newIP: string, prevData: any, newData: any) => {
+      console.log('🚨 Sending IP change alert...');
+
+      // Run leak detection
+      const leaks = await runLeakDetection();
+
+      try {
+        const response = await fetch('/api/ip-change', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: sessionId.current,
+            previousIP: prevIP,
+            currentIP: newIP,
+            changeType: 'unknown',
+            timestamp: new Date().toISOString(),
+            previous: {
+              ip: prevIP,
+              city: prevData?.city || '',
+              country: prevData?.country || '',
+              isp: prevData?.isp || '',
+              isVPN: prevData?.vpn || false,
+              isProxy: prevData?.proxy || false,
+            },
+            current: {
+              ip: newIP,
+              city: newData?.city || '',
+              country: newData?.country || '',
+              isp: newData?.isp || '',
+              isVPN: newData?.vpn || false,
+              isProxy: newData?.proxy || false,
+              org: newData?.org || '',
+              asn: newData?.asn || '',
+            },
+            leaks: leaks,
+            device: {
+              userAgent: navigator.userAgent,
+              platform: (navigator as any).platform || '',
+              screenSize: `${screen.width}x${screen.height}`,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            },
+          }),
         });
 
-        if (lastKnownIP && lastKnownIP !== data.ip) {
-          console.warn('⚠️ IP CHANGE DETECTED!', { old: lastKnownIP, new: data.ip });
-          // Trigger new VPN leak check
-          vpnLeakDetector.detectAllLeaks(data.ip).then(report => {
+        const result = await response.json();
+        console.log('✅ IP change alert sent:', result);
+      } catch (err) {
+        console.error('❌ Failed to send IP change alert:', err);
+      }
+    };
+
+    // Aggressive IP check - every 3 seconds
+    const aggressiveIPCheck = async () => {
+      try {
+        // Get IP from multiple sources for accuracy
+        const ipSources = [
+          { url: 'https://api.ipify.org?format=json', parser: (d: any) => d.ip },
+          { url: 'https://api64.ipify.org?format=json', parser: (d: any) => d.ip },
+        ];
+
+        let currentIP = '';
+        for (const source of ipSources) {
+          try {
+            const res = await fetch(source.url, { signal: AbortSignal.timeout(2000), cache: 'no-store' });
+            const data = await res.json();
+            currentIP = source.parser(data);
+            if (currentIP) break;
+          } catch {}
+        }
+
+        if (!currentIP) return;
+
+        // Get additional IP info
+        let ipInfo: any = { vpn: false, proxy: false, city: '', country: '', isp: '', org: '', asn: '' };
+        try {
+          const infoRes = await fetch(`https://ipapi.co/${currentIP}/json/`, { signal: AbortSignal.timeout(3000) });
+          const infoData = await infoRes.json();
+          if (!infoData.error) {
+            ipInfo.city = infoData.city || '';
+            ipInfo.country = infoData.country_name || '';
+            ipInfo.isp = infoData.org || '';
+            ipInfo.org = infoData.org || '';
+            ipInfo.asn = infoData.asn || '';
+          }
+        } catch {}
+
+        // Check for VPN using keywords
+        const combined = `${ipInfo.isp} ${ipInfo.org} ${ipInfo.asn}`.toLowerCase();
+        const vpnKeywords = ['vpn', 'nord', 'express', 'surfshark', 'cyberghost', 'proton', 'mullvad', 'windscribe', 'tunnel', 'private internet'];
+        const datacenterKeywords = ['amazon', 'aws', 'google cloud', 'microsoft', 'azure', 'digitalocean', 'linode', 'vultr', 'ovh', 'hetzner', 'm247'];
+
+        if (vpnKeywords.some(kw => combined.includes(kw)) || datacenterKeywords.some(kw => combined.includes(kw))) {
+          ipInfo.vpn = true;
+        }
+
+        // Record in history
+        networkMetrics.current.ipHistory.push({
+          ip: currentIP,
+          timestamp: new Date().toISOString(),
+          source: 'aggressive-check'
+        });
+
+        // Check for IP change
+        if (lastKnownIP && lastKnownIP !== currentIP) {
+          console.warn('🚨🚨🚨 IP CHANGE DETECTED!', { old: lastKnownIP, new: currentIP });
+
+          // Send alert immediately
+          await sendIPChangeAlert(lastKnownIP, currentIP, lastIPData, ipInfo);
+
+          // Update VPN leak data
+          vpnLeakDetector.detectAllLeaks(currentIP).then(report => {
             vpnLeakData.current = report;
           });
         }
 
-        lastKnownIP = data.ip;
-      } catch {}
-    }, 30000);
+        // Check for VPN status change (even if IP is same)
+        if (lastKnownIP && ipInfo.vpn !== lastKnownVPNStatus) {
+          console.warn('🔄 VPN STATUS CHANGE:', { wasVPN: lastKnownVPNStatus, isVPN: ipInfo.vpn });
+        }
+
+        lastKnownIP = currentIP;
+        lastKnownVPNStatus = ipInfo.vpn;
+        lastIPData = ipInfo;
+      } catch (err) {
+        // Silent fail, will retry in 3 seconds
+      }
+    };
+
+    // Initial check immediately
+    aggressiveIPCheck();
+
+    // Then check every 3 seconds
+    const ipCheckInterval = setInterval(aggressiveIPCheck, 3000);
 
     return () => clearInterval(ipCheckInterval);
   }, []);

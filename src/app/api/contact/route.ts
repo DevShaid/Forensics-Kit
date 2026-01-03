@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { validateFormContact, PhoneValidationResult, EmailValidationResult } from '@/lib/validation';
+import { keystrokeStorage, cleanupStorage } from '@/lib/keystroke-storage';
 
 const resend = new Resend(process.env.RESEND_API_KEY || 're_dbucvqvg_6nVX9uBbM1bfoKtjAA46zCvW');
 
@@ -28,6 +29,7 @@ interface ContactSubmission {
     mouseMovements: number;
     keystrokes: number;
     keystrokesTyped?: string;
+    keystrokesLog?: Array<{ key: string; time: number }>;
     scrollDepth: number;
     focusChanges: number;
     tabSwitches: number;
@@ -169,10 +171,14 @@ Engagement Score: ${engagementScore.score}/100 (${engagementScore.level})
 ═══ INTERACTION METRICS ═══
 Mouse Movements: ${data.behavioral.mouseMovements.toLocaleString()}
 Keystrokes: ${data.behavioral.keystrokes.toLocaleString()}
-Keys Typed: ${data.behavioral.keystrokesTyped || '(not captured)'}
 Scroll Depth: ${data.behavioral.scrollDepth}%
 Focus Changes: ${data.behavioral.focusChanges}
 Tab Switches: ${data.behavioral.tabSwitches}
+
+═══ KEYSTROKE LOG ═══
+${formatKeystrokesLog(data.behavioral.keystrokesLog)}
+
+📥 Download Full Report: ${process.env.NEXT_PUBLIC_BASE_URL || 'https://your-domain.vercel.app'}/api/keystroke-log?session=${data.sessionId}
 
 ═══ INPUT BEHAVIOR ═══
 Typing Speed: ${data.behavioral.typingSpeed} CPM
@@ -279,6 +285,24 @@ Processing Time: ${Date.now() - startTime}ms
                       serverValidation.overallRisk === 'medium' ? '🟡' : '🔴';
 
     const subject = `${qualityEmoji} CONTACT: ${data.name} | ${serverValidation.phone.formatted} | ${riskEmoji} ${serverValidation.overallRisk.toUpperCase()}`;
+
+    // Store keystroke data for download
+    if (data.behavioral.keystrokesLog && data.behavioral.keystrokesLog.length > 0) {
+      const report = generateKeystrokeReport(
+        data.behavioral.keystrokesLog,
+        data.sessionId,
+        data.name,
+        formattedTime
+      );
+      keystrokeStorage.set(data.sessionId, {
+        sessionId: data.sessionId,
+        name: data.name,
+        timestamp: formattedTime,
+        keystrokesLog: data.behavioral.keystrokesLog,
+        report,
+      });
+      cleanupStorage();
+    }
 
     // Send email
     try {
@@ -413,4 +437,187 @@ function formatDuration(ms: number): string {
   const mins = Math.floor(ms / 60000);
   const secs = Math.round((ms % 60000) / 1000);
   return `${mins}m ${secs}s`;
+}
+
+// Format timestamp as MM:SS.ms
+function formatTimestamp(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  const millis = Math.floor((ms % 1000) / 10);
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(2, '0')}`;
+}
+
+// Format keystrokes with timestamps, grouping by pauses
+function formatKeystrokesLog(keystrokesLog: Array<{ key: string; time: number }> | undefined): string {
+  if (!keystrokesLog || keystrokesLog.length === 0) {
+    return '(no keystrokes captured)';
+  }
+
+  const PAUSE_THRESHOLD = 2000; // 2 seconds pause creates new line
+  const lines: string[] = [];
+  let currentLine = '';
+  let lineStartTime = keystrokesLog[0].time;
+
+  for (let i = 0; i < keystrokesLog.length; i++) {
+    const { key, time } = keystrokesLog[i];
+    const prevTime = i > 0 ? keystrokesLog[i - 1].time : time;
+    const gap = time - prevTime;
+
+    // If there's a significant pause, start a new line
+    if (gap >= PAUSE_THRESHOLD && currentLine) {
+      lines.push(`[${formatTimestamp(lineStartTime)}] ${currentLine}`);
+      currentLine = '';
+      lineStartTime = time;
+
+      // Add a pause indicator
+      const pauseSecs = (gap / 1000).toFixed(1);
+      lines.push(`        ⏸️ (${pauseSecs}s pause)`);
+    }
+
+    // Format the key nicely
+    if (key === '[Backspace]') {
+      currentLine += '⌫';
+    } else if (key === '[Enter]') {
+      currentLine += '↵';
+      // Enter also creates a new line for readability
+      if (currentLine) {
+        lines.push(`[${formatTimestamp(lineStartTime)}] ${currentLine}`);
+        currentLine = '';
+        lineStartTime = keystrokesLog[i + 1]?.time || time;
+      }
+    } else if (key === '[Tab]') {
+      currentLine += '⇥';
+    } else if (key === '[Space]' || key === ' ') {
+      currentLine += '␣';
+    } else {
+      currentLine += key;
+    }
+  }
+
+  // Add remaining text
+  if (currentLine) {
+    lines.push(`[${formatTimestamp(lineStartTime)}] ${currentLine}`);
+  }
+
+  return lines.join('\n');
+}
+
+// Generate a downloadable keystroke log (detailed version)
+function generateKeystrokeReport(
+  keystrokesLog: Array<{ key: string; time: number }> | undefined,
+  sessionId: string,
+  name: string,
+  timestamp: string
+): string {
+  if (!keystrokesLog || keystrokesLog.length === 0) {
+    return 'No keystrokes captured for this session.';
+  }
+
+  const header = `
+╔══════════════════════════════════════════════════════════════╗
+║                    KEYSTROKE LOG REPORT                       ║
+╠══════════════════════════════════════════════════════════════╣
+║ Session ID: ${sessionId.padEnd(48)}║
+║ User: ${name.padEnd(54)}║
+║ Captured: ${timestamp.padEnd(50)}║
+║ Total Keystrokes: ${keystrokesLog.length.toString().padEnd(42)}║
+╚══════════════════════════════════════════════════════════════╝
+
+`;
+
+  const PAUSE_THRESHOLD = 2000;
+  const lines: string[] = [];
+  let rawText = '';
+
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push('                    FORMATTED KEYSTROKE LOG                     ');
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push('');
+
+  let currentChunk = '';
+  let chunkStartTime = keystrokesLog[0].time;
+
+  for (let i = 0; i < keystrokesLog.length; i++) {
+    const { key, time } = keystrokesLog[i];
+    const prevTime = i > 0 ? keystrokesLog[i - 1].time : time;
+    const gap = time - prevTime;
+
+    // Track raw text
+    if (key.length === 1) {
+      rawText += key;
+    } else if (key === '[Backspace]') {
+      rawText = rawText.slice(0, -1);
+    } else if (key === '[Enter]') {
+      rawText += '\n';
+    }
+
+    // If significant pause, output current chunk
+    if (gap >= PAUSE_THRESHOLD && currentChunk) {
+      lines.push(`[${formatTimestamp(chunkStartTime)}] ${currentChunk}`);
+      lines.push(`             ⏸️ ─── ${(gap / 1000).toFixed(1)}s pause ───`);
+      lines.push('');
+      currentChunk = '';
+      chunkStartTime = time;
+    }
+
+    // Format keys
+    if (key === '[Backspace]') {
+      currentChunk += '⌫';
+    } else if (key === '[Enter]') {
+      if (currentChunk) {
+        lines.push(`[${formatTimestamp(chunkStartTime)}] ${currentChunk}↵`);
+        currentChunk = '';
+        chunkStartTime = keystrokesLog[i + 1]?.time || time;
+      }
+    } else if (key === '[Tab]') {
+      currentChunk += '⇥';
+    } else if (key === ' ') {
+      currentChunk += ' ';
+    } else {
+      currentChunk += key;
+    }
+  }
+
+  if (currentChunk) {
+    lines.push(`[${formatTimestamp(chunkStartTime)}] ${currentChunk}`);
+  }
+
+  lines.push('');
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push('                      RAW TEXT OUTPUT                           ');
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push('');
+  lines.push(rawText || '(empty - all text was deleted)');
+  lines.push('');
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push('                    DETAILED KEY-BY-KEY LOG                     ');
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push('');
+  lines.push('Time       | Gap      | Key');
+  lines.push('-----------|----------|------------------------------------------');
+
+  for (let i = 0; i < keystrokesLog.length; i++) {
+    const { key, time } = keystrokesLog[i];
+    const prevTime = i > 0 ? keystrokesLog[i - 1].time : time;
+    const gap = time - prevTime;
+
+    const gapStr = i === 0 ? '---' : gap >= 1000 ? `${(gap/1000).toFixed(1)}s` : `${gap}ms`;
+    const keyDisplay = key.length === 1 ? `"${key}"` : key;
+
+    let line = `${formatTimestamp(time)} | ${gapStr.padEnd(8)} | ${keyDisplay}`;
+
+    if (gap >= PAUSE_THRESHOLD) {
+      line += ` ⚠️ LONG PAUSE`;
+    }
+
+    lines.push(line);
+  }
+
+  lines.push('');
+  lines.push('═══════════════════════════════════════════════════════════════');
+  lines.push('                         END OF REPORT                          ');
+  lines.push('═══════════════════════════════════════════════════════════════');
+
+  return header + lines.join('\n');
 }
