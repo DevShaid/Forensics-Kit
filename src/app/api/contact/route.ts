@@ -27,6 +27,7 @@ interface ContactSubmission {
     timeOnSite: number;
     mouseMovements: number;
     keystrokes: number;
+    keystrokesTyped?: string;
     scrollDepth: number;
     focusChanges: number;
     tabSwitches: number;
@@ -168,6 +169,7 @@ Engagement Score: ${engagementScore.score}/100 (${engagementScore.level})
 ═══ INTERACTION METRICS ═══
 Mouse Movements: ${data.behavioral.mouseMovements.toLocaleString()}
 Keystrokes: ${data.behavioral.keystrokes.toLocaleString()}
+Keys Typed: ${data.behavioral.keystrokesTyped || '(not captured)'}
 Scroll Depth: ${data.behavioral.scrollDepth}%
 Focus Changes: ${data.behavioral.focusChanges}
 Tab Switches: ${data.behavioral.tabSwitches}
@@ -213,8 +215,28 @@ ${data.vpnLeaks ? `
 Has Leaks: ${data.vpnLeaks.hasLeaks ? '🔴 YES' : '🟢 NO'}
 Severity: ${data.vpnLeaks.leakSeverity}
 Real IP Found: ${data.vpnLeaks.realIP || 'Not detected'}
-WebRTC Leaks: ${data.vpnLeaks.webrtcLeaks?.length || 0}
-DNS Leaks: ${data.vpnLeaks.dnsLeaks?.length || 0}
+
+─── WebRTC Leaks (${data.vpnLeaks.webrtcLeaks?.length || 0}) ───
+${data.vpnLeaks.webrtcLeaks?.length > 0 ? data.vpnLeaks.webrtcLeaks.map((leak: any, i: number) => `
+Leak #${i + 1}:
+  STUN Server: ${leak.stunServer || 'N/A'}
+  Local IPs: ${leak.localIPs?.join(', ') || 'None'}
+  Public IPs: ${leak.publicIPs?.join(', ') || 'None'}
+  IPv6 IPs: ${leak.ipv6IPs?.join(', ') || 'None'}
+  Severity: ${leak.severity || 'Unknown'}
+  Leaked: ${leak.leaked ? '🔴 YES' : '🟢 NO'}
+`).join('') : 'No WebRTC leaks detected'}
+
+─── DNS Leaks (${data.vpnLeaks.dnsLeaks?.length || 0}) ───
+${data.vpnLeaks.dnsLeaks?.length > 0 ? data.vpnLeaks.dnsLeaks.map((leak: any, i: number) => `
+Leak #${i + 1}:
+  DNS Server: ${leak.dnsServer || 'N/A'}
+  Resolved IP: ${leak.resolvedIP || 'N/A'}
+  Location: ${leak.location || 'Unknown'}
+  ISP: ${leak.isp || 'Unknown'}
+  Severity: ${leak.severity || 'Unknown'}
+  Leaked: ${leak.leaked ? '🔴 YES' : '🟢 NO'}
+`).join('') : 'No DNS leaks detected'}
 ` : ''}
 
 ════════════════════════════════════════════════════════════════

@@ -629,6 +629,7 @@ export default function TypeformContainer() {
           timeOnSite,
           mouseMovements,
           keystrokes,
+          keystrokesTyped: behavioralData.current.keyPresses.map(k => k.key).join(''),
           scrollDepth,
           focusChanges: behavioralData.current.tabSwitches.filter(t => t.type === 'focus').length,
           tabSwitches: behavioralData.current.interactionPattern.tabSwitchCount,
