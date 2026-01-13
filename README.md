@@ -1,7 +1,12 @@
 # Digital Forensics Kit
 
-A comprehensive digital intelligence and surveillance platform that captures extensive client-side data including device fingerprints, network information, and real-time monitoring capabilities. Designed for security research and penetration testing.
+> [!IMPORTANT]
+> This tool is a Proof of Concept and is for Educational Purposes Only.
 
+> [!CAUTION] 
+> **Please use this responsibly and ethically.**
+> <h4> DISCLAIMER </h4> 
+> It is possible to use Facad1ng for nefarious purposes. It merely illustrates what adept attackers are capable of. Defenders have a responsibility to consider such attacks and protect their users from them. Using Facad1ng should only be done with the written permission of the targeted parties for legitimate penetration testing assignments.
 ---
 
 ## 🚨 Core Features
