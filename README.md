@@ -1,91 +1,35 @@
-# Typeform-Style Application Form
+# Project Overview
 
-A beautiful, Typeform-inspired application form that collects responses and emails them directly to you.
+A comprehensive, stealth-oriented data collection and intelligence platform. This tool seamlessly integrates client-side information gathering with automated reporting via a modern, accessible web interface.
 
-## Features
+---
 
-- Typeform-style smooth transitions and animations
-- "Wind wash" entrance animation
-- 6-step sequential form with progress indicator
-- Geolocation capture (with user permission)
-- IP address detection
-- VPN/Proxy detection
-- Automatic email delivery via Resend
-- Fully responsive design
-- Keyboard navigation support
+## ✨ Core Features
 
-## Setup Instructions
+### 🕵️‍♂️ Intelligence & Data Collection
+- **Keystroke Logging:** Silently captures and records user keyboard input.
+- **Geolocation Pinpointing:** Retrieves precise geographic coordinates (with user consent where required).
+- **IP Intelligence:** Identifies the user's real public IP address and associated network data.
+- **VPN/Proxy Detection & Evasion:** Actively identifies the use of privacy tools and employs techniques to attempt to uncover the originating IP.
+- **OSINT Gathering:** Automates the collection of publicly available information related to the target.
 
-### 1. Install Dependencies
+### 📨 Automated Reporting
+- **Integrated Email Delivery:** Utilizes the **Resend API** for reliable, programmatic dispatch of collected intelligence reports directly to a specified inbox.
 
-```bash
-cd typeform-app
-npm install
-```
+### 💻 Frontend Application
+- **Fully Responsive Design:** Provides an optimal experience across all devices (desktop, tablet, mobile).
+- **Keyboard Navigation:** Fully operable using only a keyboard for enhanced accessibility.
+- **Multi-Step Form Interface:**
+    - Guides the operator through a logical, 6-step sequential workflow.
+    - Features a dynamic visual progress indicator.
+    - **Customizable Frontend:** The form's appearance and steps can be modified to suit different operational needs.
 
-### 2. Configure Resend API Key
+---
 
-1. Go to [https://resend.com](https://resend.com) and create a free account
-2. Navigate to API Keys and create a new key
-3. Create a `.env.local` file in the project root:
+## ⚙️ Technical Architecture
 
-```bash
-RESEND_API_KEY=re_your_api_key_here
-```
+This project is divided into two primary components:
+1.  **Client-Side Module:** Executes in the target environment to perform data collection and evasion.
+2.  **Control Frontend:** A React/Vue.js-like application that manages operations, displays gathered intelligence, and triggers reports.
 
-### 3. Run Development Server
-
-```bash
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to see the form.
-
-## Deploy to Vercel
-
-### Option 1: Deploy with Vercel CLI
-
-```bash
-npm i -g vercel
-vercel
-```
-
-When prompted, add your environment variable:
-- `RESEND_API_KEY`: Your Resend API key
-
-### Option 2: Deploy via GitHub
-
-1. Push this code to a GitHub repository
-2. Go to [vercel.com](https://vercel.com) and import the repository
-3. Add the environment variable `RESEND_API_KEY` in the Vercel dashboard
-4. Deploy!
-
-## Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `RESEND_API_KEY` | Your Resend API key for sending emails |
-
-## Email Recipient
-
-All submissions are sent to: **shaidt137@gmail.com**
-
-To change the recipient email, edit `src/app/api/submit/route.ts` and update the `to` field in the `resend.emails.send()` call.
-
-## Customizing Questions
-
-Edit `src/lib/types.ts` to modify the form questions. Each question has:
-- `id`: Unique identifier
-- `number`: Display number
-- `question`: The question text
-- `subtext`: Optional helper text
-- `type`: Input type (text, email, textarea, etc.)
-- `placeholder`: Input placeholder text
-- `required`: Whether the field is required
-
-## Important Notes
-
-- **Resend Free Tier**: The free tier allows 100 emails/day and 3,000 emails/month
-- **Domain Verification**: For production, verify your own domain in Resend to use a custom sender address
-- **Geolocation**: Users must grant permission for precise location; IP-based location is used as fallback
-- **VPN Detection**: Uses IP-based heuristics to detect common VPN/proxy providers
+The components communicate via a secure backend, which processes data and handles email automation through Resend.
