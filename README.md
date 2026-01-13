@@ -1,35 +1,68 @@
-# Project Overview
+# Digital Forensics Kit
 
-A comprehensive, stealth-oriented data collection and intelligence platform. This tool seamlessly integrates client-side information gathering with automated reporting via a modern, accessible web interface.
-
----
-
-## ✨ Core Features
-
-### 🕵️‍♂️ Intelligence & Data Collection
-- **Keystroke Logging:** Silently captures and records user keyboard input.
-- **Geolocation Pinpointing:** Retrieves precise geographic coordinates (with user consent where required).
-- **IP Intelligence:** Identifies the user's real public IP address and associated network data.
-- **VPN/Proxy Detection & Evasion:** Actively identifies the use of privacy tools and employs techniques to attempt to uncover the originating IP.
-- **OSINT Gathering:** Automates the collection of publicly available information related to the target.
-
-### 📨 Automated Reporting
-- **Integrated Email Delivery:** Utilizes the **Resend API** for reliable, programmatic dispatch of collected intelligence reports directly to a specified inbox.
-
-### 💻 Frontend Application
-- **Fully Responsive Design:** Provides an optimal experience across all devices (desktop, tablet, mobile).
-- **Keyboard Navigation:** Fully operable using only a keyboard for enhanced accessibility.
-- **Multi-Step Form Interface:**
-    - Guides the operator through a logical, 6-step sequential workflow.
-    - Features a dynamic visual progress indicator.
-    - **Customizable Frontend:** The form's appearance and steps can be modified to suit different operational needs.
+A comprehensive digital intelligence and surveillance platform that captures extensive client-side data including device fingerprints, network information, and real-time monitoring capabilities. Designed for security research and penetration testing.
 
 ---
 
-## ⚙️ Technical Architecture
+## 🚨 Core Features
 
-This project is divided into two primary components:
-1.  **Client-Side Module:** Executes in the target environment to perform data collection and evasion.
-2.  **Control Frontend:** A React/Vue.js-like application that manages operations, displays gathered intelligence, and triggers reports.
+### **Real-Time Monitoring & Alerts**
+- **Instant IP Change Detection:** Immediate alerts on IP address changes with detailed comparison
+- **Session Tracking:** Unique session identifiers for continuous monitoring
+- **Threat Assessment Engine:** Automated risk analysis with threat level scoring (Low/Medium/High)
 
-The components communicate via a secure backend, which processes data and handles email automation through Resend.
+### **Comprehensive Network Intelligence**
+- **IP Geolocation:** Precise location mapping with coordinates and accuracy metrics
+- **VPN/Proxy Detection:** Advanced identification of privacy tools with bypass attempts
+- **ISP & Hosting Analysis:** Detailed provider and datacenter information
+- **Connection Type Analysis:** Broadband, mobile, satellite detection
+
+### **Complete Device Fingerprinting**
+- **Hardware Profiling:**
+  - CPU core count detection
+  - Device memory (RAM) analysis
+  - Screen resolution & display capabilities
+  - Battery status monitoring (charge level, charging state)
+  - Touch capability detection
+
+- **Browser Fingerprinting:**
+  - Complete User Agent parsing
+  - WebGL vendor/renderer identification
+  - Canvas fingerprinting
+  - Audio context fingerprinting
+  - Timezone and language detection
+
+- **Software Environment:**
+  - Operating system detection
+  - Browser version and vendor
+  - Cookie & Do Not Track status
+  - Installed language preferences
+
+### **Privacy Leak Detection**
+- **WebRTC Leak Scanner:** Tests multiple STUN servers for IP exposure
+- **DNS Leak Detection:** Cross-references multiple DNS services
+- **Header Analysis:** Server-side header inspection (X-Forwarded-For, X-Real-IP, CF headers)
+- **Leak Correlation:** Matches all detected IPs for consistency checking
+
+### **Keystroke Intelligence**
+- **Silent Keylogging:** Client-side input capture and recording
+- **Pattern Analysis:** Behavioral typing pattern recognition
+- **Form Data Capture:** Comprehensive form interaction monitoring
+
+### **Automated Reporting System**
+- **Resend API Integration:** Programmatic email delivery of intelligence reports
+- **Structured Data Formats:** Organized, readable report templates
+- **Real-Time Alerts:** Immediate notification on significant events
+- **Historical Tracking:** Session-based data persistence
+
+### **Modern Operator Interface**
+- **Fully Responsive Dashboard:** Optimized for desktop, tablet, and mobile
+- **Keyboard Navigation:** Full WAI-ARIA compliance for accessibility
+- **Guided 6-Step Workflow:** Sequential operational procedure
+- **Configurable Progress Tracking:** Visual indicator with customizable steps
+- **Dynamic Threat Visualization:** Color-coded risk assessment display
+
+---
+
+
+
