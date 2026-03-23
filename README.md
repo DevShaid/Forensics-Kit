@@ -9,7 +9,7 @@
 > It is possible to use for nefarious purposes. It merely illustrates what adept attackers are capable of. Defenders have a responsibility to consider such attacks and protect their users from them. Using this tool should only be done with the written permission of the targeted parties for legitimate penetration testing assignments.
 ---
 
-## 🚨 Core Features
+## Core Features
 
 ### **Real-Time Monitoring & Alerts**
 - **Instant IP Change Detection:** Immediate alerts on IP address changes with detailed comparison
